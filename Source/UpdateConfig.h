@@ -1,7 +1,8 @@
 #pragma once
-// Acid303 Solo : URL HTTPS publique et stable d'un document JSON brut.
-// Ce fichier est heberge dans le depot GitHub public, branche main.
-// Ne jamais mettre de jeton prive ni de secret dans ce fichier.
+// ACID303 SOLO - Source publique des annonces de versions.
+// Fichier brut JSON dans le depot GitHub officiel.
+// Pas de cle API, de compte GitHub ni de dossier OneDrive necessaire.
+// ATTENTION : ce depot doit rester public pour que la verification fonctionne.
 namespace acid303update {
 inline const char* manifestUrl() {
     return "https://raw.githubusercontent.com/burnouttheory/Acid303-Solo/main/Publication/latest.json";

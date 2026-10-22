@@ -376,7 +376,7 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
     };
     updateButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff06110a));
     updateButton.setColour(juce::TextButton::textColourOffId, neonGreen);
-    updateButton.setTooltip("Verifier la version disponible et ouvrir la page de telechargement publique.");
+    updateButton.setTooltip("Verifier les versions publiees sur GitHub, puis ouvrir la page de telechargement.");
     updateButton.onClick = [this] { handleUpdateClick(); };
     addAndMakeVisible(updateButton);
     for (auto* button : {&exportMidiButton, &importMidiButton, &midiFolderButton}) {
@@ -749,7 +749,7 @@ void Acid303SoloEditor::displayUpdateStatus() {
         updateButton.setTooltip(updateOffer.error + "\nCliquez pour relancer la verification.");
     } else if (updateOffer.newer) {
         updateButton.setButtonText("MAJ : v" + updateOffer.version + " DISPONIBLE");
-        updateButton.setTooltip(updateOffer.notes + "\nCliquez pour ouvrir la page de telechargement OneDrive.");
+        updateButton.setTooltip(updateOffer.notes + "\nCliquez pour ouvrir la page des Releases GitHub.");
     } else {
         updateButton.setButtonText("A JOUR : v" + acid303update::installedVersion());
         updateButton.setTooltip("Version installee a jour. Cliquez pour rechercher une nouvelle version.");

@@ -1,0 +1,48 @@
+{
+  "Name": "Acid303 Solo",
+  "Version": "0.30.2",
+  "Factory Info": {
+    "Vendor": "Acid303 Independent",
+    "URL": "",
+    "E-Mail": "",
+    "Flags": {
+      "Unicode": true,
+      "Classes Discardable": false,
+      "Component Non Discardable": false,
+    },
+  },
+  "Classes": [
+    {
+      "CID": "ABCDEF019182FAEB4163303341333033",
+      "Category": "Audio Module Class",
+      "Name": "Acid303 Solo",
+      "Vendor": "Acid303 Independent",
+      "Version": "0.30.2",
+      "SDKVersion": "VST 3.7.12",
+      "Sub Categories": [
+        "Instrument",
+        "Synth",
+      ],
+      "Class Flags": 2,
+      "Cardinality": 2147483647,
+      "Snapshots": [
+      ],
+    },
+    {
+      "CID": "ABCDEF011234ABCD4163303341333033",
+      "Category": "Component Controller Class",
+      "Name": "Acid303 Solo",
+      "Vendor": "Acid303 Independent",
+      "Version": "0.30.2",
+      "SDKVersion": "VST 3.7.12",
+      "Sub Categories": [
+        "Instrument",
+        "Synth",
+      ],
+      "Class Flags": 2,
+      "Cardinality": 2147483647,
+      "Snapshots": [
+      ],
+    },
+  ],
+}

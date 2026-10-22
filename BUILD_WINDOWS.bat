@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title Acid303 Solo 0.30.1 - Build VST3
+title Acid303 Solo 0.30.2 - Build VST3
 
 echo ============================================
 echo   ACID303 SOLO - BUILD VST3 Windows 64 bits

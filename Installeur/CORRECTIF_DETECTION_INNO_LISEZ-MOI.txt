@@ -1,0 +1,25 @@
+ACID303 SOLO V0.30 - CORRECTIF DETECTION INNO SETUP 6.7.3
+
+Probleme : le script initial CREER_INSTALLATEUR.bat ne cherche ISCC.exe que
+sur quelques emplacements Windows. Inno Setup peut etre installe ailleurs,
+notamment dans le dossier AppData/Local/Programs du compte utilisateur.
+Il n'est pas necessaire de le desinstaller ni de passer a la version 7.
+
+SOLUTION RECOMMANDEE :
+1. Conserver Inno Setup 6.7.3 installe.
+2. Fermer FL Studio.
+3. Lancer d'abord BUILD_WINDOWS.bat si le VST3 n'est pas encore compile.
+4. Lancer ce nouveau Installeur/CREER_INSTALLATEUR.bat.
+5. Le script cherche Inno Setup 6/7 dans plusieurs emplacements.
+6. Si la recherche echoue, une fenetre de selection de fichier s'ouvre :
+   rechercher ISCC.exe dans le dossier d'installation d'Inno Setup.
+7. Attendre le message INSTALLATEUR CREE AVEC SUCCES.
+8. Recuperer Acid303Solo_Setup_0.30.0.exe dans Installeur/Output.
+
+ALTERNATIVE :
+Ouvrir Inno Setup Compiler depuis le menu Demarrer de Windows.
+Cliquer File > Open, choisir Installeur/Acid303Solo.iss, puis Build > Compile.
+Le dossier Installeur/payload/Acid303 Solo.vst3 doit deja contenir le VST3.
+
+Ce correctif modifie uniquement les fichiers de creation de l'installateur.
+Le moteur audio, l'interface VST3, les presets, MIDI et skins sont inchanges.

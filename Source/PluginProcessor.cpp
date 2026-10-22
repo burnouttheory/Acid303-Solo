@@ -414,6 +414,37 @@ juce::File Acid303SoloProcessor::getUserSkinFolder() {
         .getChildFile("Acid303").getChildFile("skins");
 }
 
+// Version 0.30.3: Inno Setup stages public factory resources in ProgramData,
+// not in the administrator account's Documents directory. When the real user
+// opens the editor, seed files into their own (possibly OneDrive-redirected)
+// Documents/Acid303 folders. Existing files are NEVER overwritten/deleted.
+void Acid303SoloProcessor::installFactoryContentForCurrentUser() {
+#if JUCE_WINDOWS
+    const auto shared = juce::File::getSpecialLocation(juce::File::commonApplicationDataDirectory)
+                            .getChildFile("Acid303Solo").getChildFile("FactoryContent");
+    const std::array<std::pair<juce::String, juce::File>, 3> categories = {{
+        { "skins",   getUserSkinFolder() },
+        { "presets", getUserPresetFolder() },
+        { "midi",    getUserMidiFolder() }
+    }};
+    for (const auto& category : categories) {
+        const auto source = shared.getChildFile(category.first);
+        const auto& destination = category.second;
+        if (!source.isDirectory()) continue;
+        if (destination.createDirectory().failed()) continue;
+        for (const auto& file : source.findChildFiles(juce::File::findFiles, false, "*")) {
+            const auto extension = file.getFileExtension().toLowerCase();
+            const bool allowed = (category.first == "skins" && extension == ".acid303skin")
+                              || (category.first == "presets" && extension == ".acid303preset")
+                              || (category.first == "midi" && (extension == ".mid" || extension == ".midi"));
+            if (!allowed) continue;
+            const auto target = destination.getChildFile(file.getFileName());
+            if (!target.exists()) file.copyFileTo(target); // preserve ALL pre-existing content
+        }
+    }
+#endif
+}
+
 juce::Result Acid303SoloProcessor::prepareSkinFolder() {
     const auto folder = getUserSkinFolder();
     if (folder.isDirectory()) return juce::Result::ok();

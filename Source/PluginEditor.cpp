@@ -28,7 +28,18 @@ struct SkinTheme {
     juce::Colour dim{0xff42604a};
 };
 
-juce::String defaultSkinName() { return "V0.25 NEON GREEN"; }
+juce::String defaultSkinName() { return "V1 ORIGINAL"; }
+
+// "V1 ORIGINAL" matches the 22 Oct 2026 reference screenshot palette.
+// The associated geometry and custom pad/knob rendering are in this editor.
+SkinTheme makeThemeV1() {
+    SkinTheme t; t.name = "V1 ORIGINAL";
+    t.accent = juce::Colour(0xff75e9ad); t.soft = juce::Colour(0xffe9f2ef);
+    t.body = juce::Colour(0xff10181c); t.deep = juce::Colour(0xff0b1013);
+    t.panel = juce::Colour(0xff151e23); t.crackA = t.panel; t.crackB = t.body;
+    t.fxAccent = juce::Colour(0xffed6776); t.fxGlow = juce::Colour(0xff65232e); t.dim = juce::Colour(0xff586b72);
+    return t;
+}
 
 SkinTheme makeThemeV25() {
     SkinTheme t; t.name = "V0.25 NEON GREEN";
@@ -63,7 +74,7 @@ SkinTheme makeThemeFire() {
     return t;
 }
 std::vector<SkinTheme> factoryThemes() {
-    return { makeThemeV25(), makeThemeV26(), makeThemeV24(), makeThemeFire() };
+    return { makeThemeV1(), makeThemeV25(), makeThemeV26(), makeThemeV24(), makeThemeFire() };
 }
 
 juce::String colourHex(juce::Colour c) {
@@ -147,7 +158,7 @@ SkinTheme resolveSkinThemeByName(const juce::String& requestedName) {
         SkinTheme candidate;
         if (loadSkinFile(f, candidate) && candidate.name == requestedName) return candidate;
     }
-    return makeThemeV25();
+    return makeThemeV1();
 }
 
 juce::String getStoredSkinName(const Acid303SoloProcessor& p) {
@@ -184,6 +195,28 @@ void drawCrackTexture(juce::Graphics& g, juce::Rectangle<float> area, const Skin
 
 void panel(juce::Graphics& g, juce::Rectangle<float> r, const juce::String& title,
            const juce::String& sub, bool redMode, const SkinTheme& theme) {
+    if (theme.name == "V1 ORIGINAL") {
+        // Reference: flat slate background, thin steel outlines and muted red FX sections.
+        const auto outline = redMode ? juce::Colour(0xffad4352) : juce::Colour(0xff52636c);
+        const auto inside = redMode ? juce::Colour(0xff24171b) : juce::Colour(0xff141c21);
+        const auto header = redMode ? juce::Colour(0xff6b2932) : juce::Colour(0xff28363d);
+        g.setColour(inside);
+        g.fillRoundedRectangle(r, 6.0f);
+        g.setColour(outline);
+        g.drawRoundedRectangle(r.reduced(0.6f), 5.6f, 1.65f);
+        const auto bar = juce::Rectangle<float>(r.getX()+8.0f,r.getY()+8.0f,r.getWidth()-16.0f,29.0f);
+        g.setColour(header);
+        g.fillRoundedRectangle(bar, 3.0f);
+        g.setColour(redMode ? juce::Colour(0xfff06e80) : juce::Colour(0xff76e7ad));
+        g.fillEllipse(bar.getX()+7.0f,bar.getY()+8.0f,11.0f,11.0f);
+        g.setColour(juce::Colours::white);
+        g.setFont(juce::Font(juce::FontOptions(15.0f).withStyle("Bold")));
+        g.drawText(title,bar.withTrimmedLeft(26).reduced(0,2),juce::Justification::centredLeft);
+        g.setColour(juce::Colour(0xffd2dcdf));
+        g.setFont(juce::Font(juce::FontOptions(9.5f).withStyle("Bold")));
+        g.drawText(sub,bar.reduced(14,2),juce::Justification::centredRight);
+        return;
+    }
     g.setColour(juce::Colours::black.withAlpha(0.6f));
     g.fillRoundedRectangle(r.translated(2.0f,4.0f), 7.0f);
     g.setColour(theme.panel);
@@ -397,6 +430,7 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
         else Acid303SoloProcessor::getUserMidiFolder().revealToUser();
     };
     ensureFactorySkinFiles();
+    Acid303SoloProcessor::installFactoryContentForCurrentUser();
     refreshSkinChoices();
     processor.params.state.setProperty(juce::Identifier("selectedSkinName"), getStoredSkinName(processor), nullptr);
     skinChoice.onChange = [this] {
@@ -417,6 +451,42 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
     startTimerHz(8);
     timerCallback();
 }
+void Acid303SoloEditor::mouseDown(const juce::MouseEvent& event) {
+    if (event.y > getHeight() * (66.0f / virtualHeight) ||
+        event.x > getWidth() * (620.0f / virtualWidth)) {
+        juce::AudioProcessorEditor::mouseDown(event);
+        return;
+    }
+    juce::PopupMenu menu;
+    menu.addItem(1, "Verifier les mises a jour GitHub", true, false);
+    if (updateOffer.newer)
+        menu.addItem(2, "Telecharger v" + updateOffer.version, true, false);
+    menu.addItem(3, "Ouvrir les Releases GitHub", true, false);
+    juce::PopupMenu skins;
+    for (int i = 0; i < availableSkinNames.size(); ++i)
+        skins.addItem(100+i, availableSkinNames[i], true,
+                      availableSkinNames[i] == getStoredSkinName(processor));
+    menu.addSubMenu("Skins", skins);
+    menu.addSeparator();
+    menu.addItem(4, "Preset precedent");
+    menu.addItem(5, "Preset suivant");
+    const juce::Component::SafePointer<Acid303SoloEditor> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(),
+                       [safe](int id) {
+        if (safe == nullptr) return;
+        if (id == 1) safe->checkForUpdates();
+        else if (id == 2) safe->handleUpdateClick();
+        else if (id == 3) juce::URL("https://github.com/burnouttheory/Acid303-Solo/releases").launchInDefaultBrowser();
+        else if (id == 4) safe->stepUserPreset(-1);
+        else if (id == 5) safe->stepUserPreset(1);
+        else if (id >= 100 && id < 100 + safe->availableSkinNames.size()) {
+            const auto name = safe->availableSkinNames[id - 100];
+            safe->processor.params.state.setProperty(juce::Identifier("selectedSkinName"), name, nullptr);
+            safe->applySkin(name);
+        }
+    });
+}
+
 Acid303SoloEditor::~Acid303SoloEditor() {
     updateWorker.signalThreadShouldExit();
     updateWorker.stopThread(6000);
@@ -509,6 +579,8 @@ void Acid303SoloEditor::resized() {
         return juce::Rectangle<int>(juce::roundToInt(x*sx),juce::roundToInt(y*sy),
                                     juce::roundToInt(w*sx),juce::roundToInt(h*sy));
     };
+    // Same full-featured toolbar as v0.30.2 for EVERY skin, including V1 ORIGINAL.
+    // In particular MAJ, SKINS, prev/next and PRESET actions are always visible.
     tempoLabel.setBounds(B(715,18,246,30));
     skinLabel.setBounds(B(964,18,68,30));
     skinChoice.setBounds(B(1038,18,133,30));
@@ -568,6 +640,51 @@ void Acid303SoloEditor::paint(juce::Graphics& g) {
     g.fillAll(theme.deep);
     g.addTransform(juce::AffineTransform::scale(float(getWidth()) / virtualWidth,
                                                 float(getHeight()) / virtualHeight));
+    if (theme.name == "V1 ORIGINAL") {
+        const auto frame = juce::Rectangle<float>(9.0f,8.0f,1182.0f,884.0f);
+        g.setColour(juce::Colour(0xff11191d));
+        g.fillRoundedRectangle(frame, 8.0f);
+        g.setColour(juce::Colour(0xff35464c));
+        g.drawRoundedRectangle(frame, 8.0f, 1.2f);
+        g.setColour(juce::Colours::white);
+        g.setFont(juce::Font(juce::FontOptions(29.0f).withStyle("Bold")));
+        g.drawText("ACID 303",27,19,240,38,juce::Justification::centredLeft);
+        g.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
+        g.drawText("SOLO / VST3 / FL STUDIO",263,25,240,22,juce::Justification::centredLeft);
+        g.setColour(juce::Colour(0xff080e10));
+        g.fillRoundedRectangle(854.0f,16.0f,313.0f,36.0f,4.0f);
+        g.setColour(juce::Colour(0xff74e6aa));
+        g.fillEllipse(864.0f,27.0f,10.0f,10.0f);
+        // Adapt the screenshot palette, NOT its omission of the preset/update toolbar.
+        // Keep the same geometry and all interactive controls as the v0.30.2 UI.
+        g.setColour(juce::Colour(0xff182228));
+        g.fillRoundedRectangle(juce::Rectangle<float>(23,68,1154,316),6.0f);
+        g.setColour(juce::Colour(0xff52636c));
+        g.drawRoundedRectangle(juce::Rectangle<float>(23,68,1154,316),6.0f,1.25f);
+        // Dedicated upper toolbar: preset arrows/name, save/load/folder, GitHub MAJ.
+        g.setColour(juce::Colour(0xff263239));
+        g.fillRoundedRectangle(juce::Rectangle<float>(29,74,872,42),5.0f);
+        g.setColour(juce::Colour(0xff566a74));
+        g.drawRoundedRectangle(juce::Rectangle<float>(29,74,872,42),5.0f,1.0f);
+        g.setColour(juce::Colour(0xff263239));
+        g.fillRoundedRectangle(juce::Rectangle<float>(917,74,245,42),5.0f);
+        g.setColour(juce::Colour(0xff566a74));
+        g.drawRoundedRectangle(juce::Rectangle<float>(917,74,245,42),5.0f,1.0f);
+        panel(g,{35,126,333,246},"OSCILLATOR","WAVE / SHAPE / TUNE",false,theme);
+        panel(g,{377,126,347,246},"FILTER","CUTOFF / RESO / LFO",false,theme);
+        panel(g,{733,126,264,246},"ENVELOPE","SLIDE / ACCENT",false,theme);
+        panel(g,{1006,126,160,246},"OUTPUT","MASTER",false,theme);
+        panel(g,{23,391,331,198},"COMPRESSOR","3-BAND",true,theme);
+        panel(g,{362,391,267,198},"DISTORTION","TUBE / BITCRUSHER",true,theme);
+        panel(g,{637,391,255,198},"DELAY","STEREO / SYNC BPM",true,theme);
+        panel(g,{900,391,277,198},"REVERB","STEREO",true,theme);
+        panel(g,{23,600,1154,288},"16-STEP SEQUENCER","",false,theme);
+        g.setColour(juce::Colours::white);
+        g.setFont(juce::Font(juce::FontOptions(11.5f).withStyle("Bold")));
+        g.drawText("MIDI : velocite = accent | chevauchement = slide | import/export dans Documents/Acid303/midi",
+                   47,866,752,16,juce::Justification::centredLeft);
+        return;
+    }
     auto full = juce::Rectangle<float>(8.0f,8.0f,1184.0f,884.0f);
     g.setColour(theme.body);
     g.fillRoundedRectangle(full,8.0f);
@@ -615,43 +732,62 @@ void Acid303SoloEditor::applySkin(const juce::String& skinName) {
     const auto accent = theme.accent;
     const auto soft = theme.soft;
     const bool lightTheme = theme.panel.getPerceivedBrightness() > 0.65f;
-    knobLook.setAccentColour(accent);
+    const bool reference = theme.name == "V1 ORIGINAL";
+    knobLook.setAccentColour(reference ? juce::Colour(0xffd98462) : accent);
     for (auto& c : controls) {
-        c.slider->setColour(juce::Slider::textBoxBackgroundColourId, theme.panel);
-        c.slider->setColour(juce::Slider::textBoxTextColourId, accent);
-        c.slider->setColour(juce::Slider::textBoxOutlineColourId, accent);
-        c.slider->setColour(juce::Slider::textBoxHighlightColourId, accent);
-        c.label->setColour(juce::Label::textColourId, accent);
+        c.slider->setColour(juce::Slider::textBoxBackgroundColourId,
+                            reference ? juce::Colour(0xff2a383f) : theme.panel);
+        c.slider->setColour(juce::Slider::textBoxTextColourId, reference ? juce::Colours::white : accent);
+        c.slider->setColour(juce::Slider::textBoxOutlineColourId,
+                            reference ? juce::Colour(0xff566d75) : accent);
+        c.slider->setColour(juce::Slider::textBoxHighlightColourId,accent);
+        c.label->setColour(juce::Label::textColourId,reference ? juce::Colours::white : accent);
         c.slider->repaint();
     }
     for (auto* label : {&presetNameLabel, &skinLabel, &rateLabel, &tempoLabel,
                         &distTypeName, &delaySubdivision})
         label->setColour(juce::Label::textColourId, accent);
-    delaySubdivision.setColour(juce::Label::textColourId, soft);
+    delaySubdivision.setColour(juce::Label::textColourId, reference ? juce::Colours::white : soft);
+    tempoLabel.setColour(juce::Label::textColourId, accent);
     distTypeName.setColour(juce::Label::backgroundColourId, theme.panel);
     for (auto* choice : {&rateChoice, &skinChoice, &delayModeChoice}) {
         choice->setColour(juce::ComboBox::backgroundColourId, theme.panel);
-        choice->setColour(juce::ComboBox::textColourId, accent);
-        choice->setColour(juce::ComboBox::outlineColourId, accent);
-        choice->setColour(juce::ComboBox::arrowColourId, accent);
+        choice->setColour(juce::ComboBox::textColourId, reference ? juce::Colours::white : accent);
+        choice->setColour(juce::ComboBox::outlineColourId,
+                          reference ? juce::Colour(0xff687c82) : accent);
+        choice->setColour(juce::ComboBox::arrowColourId, reference ? juce::Colours::white : accent);
     }
     for (auto* button : {&modeButton, &previousPresetButton, &nextPresetButton,
                          &savePresetButton, &loadPresetButton,
                          &presetFolderButton, &updateButton, &exportMidiButton, &importMidiButton,
                          &midiFolderButton, &prevDistType, &nextDistType}) {
         button->setColour(juce::TextButton::buttonColourId, theme.panel);
-        button->setColour(juce::TextButton::textColourOffId, accent);
+        button->setColour(juce::TextButton::textColourOffId, reference ? juce::Colours::white : accent);
+    }
+    // Preserve EVERY v0.30.2 control as a visible, direct-action widget.
+    // No V1 skin is allowed to hide preset navigation, skin selection or GitHub MAJ.
+    for (auto* button : {&previousPresetButton, &nextPresetButton, &savePresetButton,
+                         &loadPresetButton, &presetFolderButton, &updateButton})
+        button->setVisible(true);
+    presetNameLabel.setVisible(true);
+    skinLabel.setVisible(true);
+    skinChoice.setVisible(true);
+    if (reference) {
+        modeButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffffc166));
+        distTypeName.setColour(juce::Label::textColourId, juce::Colour(0xffffc166));
+        distTypeName.setColour(juce::Label::backgroundColourId, juce::Colour(0xff080f13));
     }
     for (auto& effect : effectButtons) {
         effect.button->setColour(juce::TextButton::buttonColourId,
-            lightTheme ? theme.panel.darker(0.09f) : theme.fxGlow);
+            reference ? juce::Colour(0xff803440) : lightTheme ? theme.panel.darker(0.09f) : theme.fxGlow);
         effect.button->setColour(juce::TextButton::buttonOnColourId,
-            lightTheme ? theme.panel.darker(0.20f) : theme.panel.brighter(0.12f));
-        effect.button->setColour(juce::TextButton::textColourOffId, accent);
-        effect.button->setColour(juce::TextButton::textColourOnId, accent);
+            reference ? juce::Colour(0xff328360) : lightTheme ? theme.panel.darker(0.20f) : theme.panel.brighter(0.12f));
+        effect.button->setColour(juce::TextButton::textColourOffId, reference ? juce::Colours::white : accent);
+        effect.button->setColour(juce::TextButton::textColourOnId, reference ? juce::Colours::white : accent);
     }
     if (updateOffer.newer) updateButton.setColour(juce::TextButton::buttonColourId, theme.fxAccent.darker(0.55f));
     activeSkinName = theme.name;
+    resized(); // use the same proven v0.30.2 geometry for every skin
     sequenceGrid.repaint();
     repaint();
 }
@@ -756,6 +892,8 @@ void Acid303SoloEditor::displayUpdateStatus() {
     }
     updateButton.setColour(juce::TextButton::buttonColourId,
                            updateOffer.newer ? juce::Colour(0xff5d2512) : juce::Colour(0xff06110a));
+    // Always display status, including "A JOUR" on the V1 ORIGINAL skin.
+    updateButton.setVisible(true);
 }
 
 void Acid303SoloEditor::handleUpdateClick() {
@@ -920,11 +1058,12 @@ void Acid303SequenceGrid::paint(juce::Graphics& g) {
     const auto accent = theme.accent;
     const auto soft = theme.soft;
     const bool lightTheme = theme.panel.getPerceivedBrightness() > 0.65f;
+    const bool reference = theme.name == "V1 ORIGINAL";
     const float scaleX = float(getWidth()) / 1123.0f;
     const float scaleY = float(getHeight()) / 221.0f;
     g.addTransform(juce::AffineTransform::scale(scaleX,scaleY));
     const auto bounds = juce::Rectangle<int>(0,0,1123,221);
-    g.setColour(lightTheme ? theme.panel : juce::Colour(0xff101519));
+    g.setColour(reference ? juce::Colour(0xff131b1f) : lightTheme ? theme.panel : juce::Colour(0xff101519));
     g.fillRoundedRectangle(bounds.toFloat(), 4.0f);
     const float cell = float(1123 - labelWidth) / 16.0f;
     const int playing = processor.getPlayMode() == 1
@@ -936,13 +1075,13 @@ void Acid303SequenceGrid::paint(juce::Graphics& g) {
     // Step numbers and a selectable LED per column choose the LOOP LENGTH.
     // The first pad at the left is step 1, and numbering grows to step 16
     // at the right, using exactly the same column boundaries as the pads.
-    g.setColour(lightTheme ? theme.body : juce::Colour(0xff151c20));
+    g.setColour(reference ? juce::Colour(0xff141c20) : lightTheme ? theme.body : juce::Colour(0xff151c20));
     g.fillRoundedRectangle(juce::Rectangle<float>(0.0f, 0.0f,
                            1123.0f, float(headerHeight)), 3.0f);
-    g.setColour(accent);
+    g.setColour(reference ? juce::Colours::white : accent);
     g.setFont(juce::Font(juce::FontOptions(14.0f).withStyle("Bold")));
     g.drawText("BOUCLE", 10, 1, labelWidth-20, 19, juce::Justification::centredLeft);
-    g.setColour(soft);
+    g.setColour(reference ? juce::Colour(0xffffc063) : soft);
     g.drawText(juce::String(processor.getSequenceLength()) + " / 16", 10, 19, labelWidth-20, 20,
                juce::Justification::centredLeft);
     const int loopLength = processor.getSequenceLength();
@@ -951,7 +1090,7 @@ void Acid303SequenceGrid::paint(juce::Graphics& g) {
         const int right = labelWidth + juce::roundToInt((col + 1) * cell);
         const auto hdr = juce::Rectangle<int>(left, 0, right-left, headerHeight);
         if (col == playing) {
-            g.setColour(accent.withAlpha(0.20f));
+            g.setColour((reference ? juce::Colour(0xffffbb65) : accent).withAlpha(0.20f));
             g.fillRect(hdr.reduced(2, 2));
             g.setColour(accent.withAlpha(0.10f));
             g.fillRect(left, headerHeight, right-left, rowHeight*4);
@@ -961,23 +1100,26 @@ void Acid303SequenceGrid::paint(juce::Graphics& g) {
             g.setColour(accent.withAlpha(0.35f));
             g.fillRect(left, 2, 1, headerHeight-4);
         }
-        g.setColour(col < loopLength ? accent : theme.dim);
+        g.setColour(reference ? juce::Colours::white : col < loopLength ? accent : theme.dim);
         g.setFont(juce::Font(juce::FontOptions(13.0f).withStyle("Bold")));
         g.drawText(juce::String(col + 1), juce::Rectangle<int>(left, 0, right-left, 19), juce::Justification::centred);
         const float ledX = 0.5f * float(left + right) - 7.0f;
-        g.setColour(juce::Colour(0xff010302));
+        g.setColour(juce::Colour(0xff080f12));
         g.fillEllipse(ledX - 1.5f, 24.0f, 17.0f, 17.0f);
         // Orange: selected loop endpoint, green: within loop, grey: excluded.
-        g.setColour(col + 1 == loopLength ? juce::Colour(0xfffb355a) :
-                    col + 1 < loopLength ? accent : juce::Colour(0xff233128));
+        g.setColour(reference ? (col + 1 == loopLength ? juce::Colour(0xffffc065) :
+                                  col + 1 < loopLength ? juce::Colour(0xff76e7ae) : juce::Colour(0xff28353b)) :
+                    (col + 1 == loopLength ? juce::Colour(0xfffb355a) :
+                     col + 1 < loopLength ? accent : juce::Colour(0xff233128)));
         g.fillEllipse(ledX, 25.5f, 14.0f, 14.0f);
     }
     for (int row=0; row<4; ++row) {
         const int top=headerHeight+row*rowHeight;
-        g.setColour(lightTheme ? (row%2 == 0 ? theme.panel : theme.body)
-                                   : (row%2 == 0 ? juce::Colour(0xff06100a) : juce::Colour(0xff040b07)));
+        g.setColour(reference ? (row % 2 == 0 ? juce::Colour(0xff2a373d) : juce::Colour(0xff26343a)) :
+            lightTheme ? (row%2 == 0 ? theme.panel : theme.body) :
+            (row%2 == 0 ? juce::Colour(0xff06100a) : juce::Colour(0xff040b07)));
         g.fillRect(0,top,labelWidth-1,rowHeight-2);
-        g.setColour(accent);
+        g.setColour(reference ? juce::Colours::white : accent);
         g.drawText(rows[static_cast<size_t>(row)], 10,top, labelWidth-20,rowHeight-1,
                    juce::Justification::centredLeft);
         for (int col=0; col<16; ++col) {
@@ -986,22 +1128,26 @@ void Acid303SequenceGrid::paint(juce::Graphics& g) {
             const int right=labelWidth+juce::roundToInt((col+1)*cell);
             juce::Rectangle<float> pad(float(left+4),float(top+6),float(right-left-8),float(rowHeight-12));
             const bool isOn = row==0 ? step.accent : row==1 ? step.slide : row==3 ? step.on : true;
-            const auto onColour = row==0 ? juce::Colour(0xff8f1c33) : row==1 ? juce::Colour(0xff0c4826)
-                                       : row==2 ? juce::Colour(0xff0a0f0d) : juce::Colour(0xff0f3517);
-            g.setColour(lightTheme ? (isOn ? theme.panel.darker(0.11f) : theme.panel)
-                                   : (col < loopLength ? (isOn ? onColour : juce::Colour(0xff0d1510))
-                                                       : juce::Colour(0xff0a0e0b)));
+            const auto onColour = reference
+                ? (row==0 ? juce::Colour(0xffb97352) : row==1 ? juce::Colour(0xff286a91)
+                          : row==2 ? juce::Colour(0xff080d10) : juce::Colour(0xff247657))
+                : (row==0 ? juce::Colour(0xff8f1c33) : row==1 ? juce::Colour(0xff0c4826)
+                          : row==2 ? juce::Colour(0xff0a0f0d) : juce::Colour(0xff0f3517));
+            g.setColour(reference ? (isOn ? onColour : juce::Colour(0xff29373e)) :
+                        lightTheme ? (isOn ? theme.panel.darker(0.11f) : theme.panel) :
+                        (col < loopLength ? (isOn ? onColour : juce::Colour(0xff0d1510))
+                                            : juce::Colour(0xff0a0e0b)));
             g.fillRoundedRectangle(pad,4.0f);
             if (row == 2) {
                 // The pitch is ALWAYS white on a very dark pad: never yellow text
                 // on amber; label stays readable even at the minimum window size.
-                g.setColour(accent);
+                g.setColour(reference ? juce::Colour(0xffffbc6b) : accent);
                 g.drawRoundedRectangle(pad.reduced(0.8f),3.0f,1.6f);
-                g.setColour(col < loopLength ? soft : theme.dim.brighter(0.15f));
+                g.setColour(reference ? juce::Colours::white : col < loopLength ? soft : theme.dim.brighter(0.15f));
                 g.setFont(juce::Font(juce::FontOptions(16.0f).withStyle("Bold")));
                 g.drawText(gridNoteName(step.note), pad.toNearestInt(), juce::Justification::centred);
             } else if (isOn) {
-                g.setColour(soft);
+                g.setColour(reference ? juce::Colours::white : soft);
                 g.setFont(juce::Font(juce::FontOptions(13.0f).withStyle("Bold")));
                 g.drawText(row==0 ? "A" : row==1 ? "S" : "ON", pad.toNearestInt(), juce::Justification::centred);
             } else {

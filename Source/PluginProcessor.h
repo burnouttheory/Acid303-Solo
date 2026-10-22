@@ -57,6 +57,7 @@ public:
     static juce::Result prepareMidiFolder();
     static juce::File getUserSkinFolder();
     static juce::Result prepareSkinFolder();
+    static void installFactoryContentForCurrentUser();
 private:
     acid303::Engine engine;
     std::array<std::atomic<uint32_t>, 16> steps{};

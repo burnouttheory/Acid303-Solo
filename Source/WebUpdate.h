@@ -5,7 +5,7 @@
 // Checks ONLY a public HTTPS JSON manifest. No OneDrive account, local sync,
 // file downloads, installation, admin rights or activity on the audio thread.
 namespace acid303update {
-inline juce::String installedVersion() { return "0.30.2"; }
+inline juce::String installedVersion() { return "0.30.3"; }
 
 inline int compareVersions(const juce::String& a, const juce::String& b) {
     const auto aa = juce::StringArray::fromTokens(a, ".", "");

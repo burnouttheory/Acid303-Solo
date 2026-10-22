@@ -1,6 +1,6 @@
 {
   "Name": "Acid303 Solo",
-  "Version": "0.30.2",
+  "Version": "0.30.3",
   "Factory Info": {
     "Vendor": "Acid303 Independent",
     "URL": "",
@@ -17,7 +17,7 @@
       "Category": "Audio Module Class",
       "Name": "Acid303 Solo",
       "Vendor": "Acid303 Independent",
-      "Version": "0.30.2",
+      "Version": "0.30.3",
       "SDKVersion": "VST 3.7.12",
       "Sub Categories": [
         "Instrument",
@@ -33,7 +33,7 @@
       "Category": "Component Controller Class",
       "Name": "Acid303 Solo",
       "Vendor": "Acid303 Independent",
-      "Version": "0.30.2",
+      "Version": "0.30.3",
       "SDKVersion": "VST 3.7.12",
       "Sub Categories": [
         "Instrument",

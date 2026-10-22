@@ -1,5 +1,5 @@
 #define MyAppName "Acid303 Solo"
-#define MyAppVersion "0.30.2"
+#define MyAppVersion "0.30.3"
 
 [Setup]
 AppId=Acid303SoloVST3
@@ -29,6 +29,12 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 [Files]
 ; JUCE Windows VST3 est un dossier (bundle) : il faut conserver Contents\x86_64-win\...
 Source: "payload\Acid303 Solo.vst3\*"; DestDir: "{app}\Acid303 Solo.vst3"; Flags: recursesubdirs createallsubdirs ignoreversion
+; Only files placed in FactoryContent are distributed.  NO automatic access to the author's Documents folder.
+; A user-level JUCE startup routine copies missing factory files into the real Documents folder,
+; avoiding both elevated-install wrong-user paths and overwrites of customised content.
+Source: "..\FactoryContent\skins\*"; DestDir: "{commonappdata}\Acid303Solo\FactoryContent\skins"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\FactoryContent\presets\*"; DestDir: "{commonappdata}\Acid303Solo\FactoryContent\presets"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\FactoryContent\midi\*"; DestDir: "{commonappdata}\Acid303Solo\FactoryContent\midi"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Code]
 function InitializeSetup(): Boolean;

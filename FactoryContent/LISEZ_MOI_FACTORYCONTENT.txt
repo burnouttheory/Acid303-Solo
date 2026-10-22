@@ -1,0 +1,12 @@
+FICHIERS A INCLURE DANS LES FUTURS INSTALLATEURS ACID303
+--------------------------------------------------------
+skins   : extensions .acid303skin
+presets : extensions .acid303preset
+midi    : extensions .mid ou .midi
+
+L'installateur utilise UNIQUEMENT ces sous-dossiers pour la distribution.
+NE PAS copier tout votre dossier personnel Documents/Acid303 ici par accident.
+Apres compilation du VST3 et AVANT CREER_INSTALLATEUR.bat, ajoutez
+les nouveaux fichiers que vous souhaitez partager.
+Aucune copie n'ecrase un fichier existant du destinataire. Au besoin,
+changez le nom du contenu distribue pour une nouvelle version.

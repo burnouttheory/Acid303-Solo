@@ -50,6 +50,7 @@ public:
     ~Acid303SoloEditor() override;
     void paint(juce::Graphics&) override;
     void resized() override;
+    void mouseDown(const juce::MouseEvent& event) override;
 private:
     Acid303SoloProcessor& processor;
     VintageKnobLook knobLook;

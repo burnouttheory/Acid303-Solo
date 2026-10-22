@@ -1,10 +1,9 @@
 #pragma once
-// ACID303 SOLO - A CONFIGURER UNE FOIS AVANT LA PREMIERE DISTRIBUTION
-// Il doit s'agir de l'URL HTTPS DIRECTE d'un document JSON public.
-// Exemple : https://votre-domaine.example/acid303/latest.json
-// Une page HTML de partage OneDrive n'est PAS une URL JSON directe.
+// Acid303 Solo : URL HTTPS publique et stable d'un document JSON brut.
+// Ce fichier est heberge dans le depot GitHub public, branche main.
+// Ne jamais mettre de jeton prive ni de secret dans ce fichier.
 namespace acid303update {
 inline const char* manifestUrl() {
-    return "https://VOTRE-ADRESSE-HTTPS/latest.json";
+    return "https://raw.githubusercontent.com/burnouttheory/Acid303-Solo/main/Publication/latest.json";
 }
 }

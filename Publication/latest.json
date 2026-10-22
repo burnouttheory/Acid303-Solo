@@ -1,5 +1,5 @@
 {
-  "version": "0.30.0",
-  "download_url": "https://1drv.ms/f/REMPLACER_PAR_LE_VRAI_LIEN_DE_VOTRE_DOSSIER",
-  "notes": "Acid303 Solo 0.30.0 : installateur Windows et notification des mises a jour."
+  "version": "0.30.1",
+  "download_url": "https://github.com/burnouttheory/Acid303-Solo/releases",
+  "notes": "Acid303 Solo v0.30.1 - version de test pour Windows VST3."
 }

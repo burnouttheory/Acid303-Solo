@@ -1,0 +1,212 @@
+Correctif v0.28.3 : barre de presets re-dessinee sur tous les skins pour supprimer la coupure visuelle de fond ; rond decoratif de gauche retire ; elements des presets recentres.
+
+VERSION 0.27 - PRESENTATION PRESETS/SKINS SIMPLIFIEE
+
+ACID303 SOLO - V0.27 : PRESETS ET SKINS
+
+1. BANDE DE PRESETS AU-DESSUS DES QUATRE SECTIONS AUDIO
+Les deux petites fleches < et > encadrent le nom du preset.
+Chaque clic charge le preset precedent ou suivant dans l'ordre alphabetique
+des fichiers .acid303preset presents dans Documents\Acid303\presets.
+La liste est parcourue en boucle. Si le preset actuel est absent du dossier,
+la fleche droite charge le premier et la fleche gauche le dernier.
+Une alerte indique lorsque le dossier ne contient aucun preset.
+IMPORTANT : changer de preset remplace les reglages actuels et les 16 pas.
+Enregistrez vos modifications avec SAVE PRESET avant de parcourir la liste.
+
+2. SKINS EN HAUT A DROITE
+Le menu deroulant SKINS se trouve immediatement a droite de l'affichage
+FL STUDIO ... BPM, dans l'angle superieur droit. Cliquez sur la petite fleche
+du menu pour choisir :
+ - NEON GREEN (V0.25) : look de la version 0.25 (par defaut) ;
+ - ICE BLUE : variante bleu glace.
+
+Le skin fait partie des parametres de l'instance du plugin enregistres
+dans un projet FL Studio (.flp). Ce n'est pas un parametre global a toutes
+les instances. Les presets Acid303 peuvent egalement enregistrer ce choix.
+Le skin change l'apparence, pas le son.
+
+3. INSTALLATION
+Fermer FL Studio. Decompresser le ZIP dans un nouveau dossier.
+Executer BUILD_WINDOWS.bat et verifier la reussite de la compilation.
+Copier le nouveau dossier Acid303 Solo.vst3 dans
+C:\Program Files\Common Files\VST3 en remplacant l'ancien.
+Rouvrir FL Studio et tester le menu SKINS et les deux fleches.
+Moteur audio, MIDI, sequencer, effets et presets inchanges.
+
+Acid303 Solo VST3 v0.25 - Modern Neon UI
+
+Nouveautes visuelles : interface plus moderne, potentiometres 3D argent, bordures et textes neon vert, fond noir texture craquelures, panneaux d effets accentues en rouge, nom du preset visible en haut, suppression des mentions "303 MONOSYNTH" et "FL STUDIO / MIDI".
+
+ACID303 SOLO v0.24 — CORRECTION FOCUS CLAVIER FL STUDIO
+========================================================
+
+Correction : l'interface demande explicitement a ses composants standard (boutons,
+potentiometres, selecteurs, grille et fenetre principale) de NE PAS prendre le
+focus clavier lors d'un clic souris. Aucun changement de moteur audio,
+parametres, presets, import/export MIDI ou sequenceur par rapport a v0.23.
+
+FL STUDIO : ETAPE ESSENTIELLE
+Dans le wrapper du plugin (icone engrenage), desactiver « Typing keyboard
+priority ». Si besoin, activer « Keep focus » dans Wrapper Settings. Verifier
+que le plugin n'est pas en mode Detached/Bridged. Les noms peuvent varier selon
+la version de FL Studio.
+
+La barre d'espace doit alors rester disponible pour Play/Stop, meme quand vous
+cliquez dans Acid303. Lors d'une edition de valeur numerique, d'une recherche
+dans un menu ou d'une fenetre de fichier, le focus clavier peut etre utilise
+temporairement par le champ concerne : terminer l'edition avec Entree ou Echap.
+
+INSTALLATION
+1. Fermer FL Studio, decompresser le ZIP dans un dossier distinct.
+2. Lancer BUILD_WINDOWS.bat dans ce dossier.
+3. Si compilation reussie, copier build\Acid303Solo_artefacts\Release\VST3\Acid303 Solo.vst3
+   vers C:\Program Files\Common Files\VST3\ (remplacer l'ancienne version).
+4. Relancer FL Studio, verifier les reglages du wrapper et tester Espace.
+
+La compilation JUCE sous Windows et le comportement exact dans FL Studio
+restent a verifier sur l'ordinateur de l'utilisateur.
+
+--------- DOCUMENTATION PRECEDENTE ---------
+
+ACID303 SOLO V0.23 - DELAY NORMAL / PING-PONG + WIDTH
+=======================================================
+
+PRESETS PERSONNELS
+-----------------
+Le chemin de sauvegarde par defaut est desormais le dossier Documents reel
+pour le compte Windows qui lance FL Studio :
+    Documents\Acid303\presets
+Le dossier est cree automatiquement a l'utilisation des boutons SAVE, LOAD ou
+DOSSIER. Le bouton DOSSIER ouvre directement ce repertoire dans l'Explorateur.
+Windows et OneDrive peuvent rediriger Documents : le bouton DOSSIER indique
+l'emplacement exact sur votre PC.
+
+Chaque fichier porte l'extension .acid303preset et peut etre copie ou envoye a
+un ami disposant d'Acid303 Solo. Il contient les reglages de la 303,
+les effets, le mode de jeu, les 16 pas avec notes, Slide, Accent et ON/OFF,
+la longueur de boucle et la vitesse du sequenceur.
+
+Lorsque vous utilisez les boutons SAVE / LOAD / DOSSIER, la v0.21 essaie de
+COPIER les anciens presets .acid303preset dans Documents\Acid303\presets
+a partir de ces deux dossiers (sans ecraser les fichiers deja presents) :
+    %APPDATA%\Acid303 Solo\Presets
+    C:\Program Files\Common Files\VST3\Acid303 Solo.vst3\Contents\Presets
+Les fichiers originaux ne sont pas effaces. La copie se fait uniquement si
+le repertoire source existe et est accessible ; pour les presets enregistres
+dans d'autres dossiers, utiliser LOAD PRESET pour les ouvrir manuellement.
+IMPORTANT : si un ancien preset etait DANS le dossier du VST3, sauvegardez-le
+AVANT de remplacer l'ancien VST3, sinon il pourrait etre efface.
+
+SEQUENCEUR
+----------
+Selecteur de vitesse (synchronise au BPM de FL Studio) :
+    NOIRE (1/4)          : 1 pas par temps, 16 pas = 4 mesures
+    CROCHE (1/8)         : 2 pas par temps, 16 pas = 2 mesures
+    DOUBLE CROCHE (1/16) : 4 pas par temps, 16 pas = 1 mesure
+    TRIPLE CROCHE (1/32) : 8 pas par temps, 16 pas = 1/2 mesure
+Le choix par defaut reste DOUBLE CROCHE. Les anciens presets conservent leur
+vitesse et leur numero de choix. Les voyants 1 a 16 choisissent la longueur
+de boucle ; la ligne ON/OFF active les notes de chaque pas.
+Une note MIDI maintenue dans le Piano Roll declenche la lecture du sequenceur,
+qui repart au pas 1. Relacher la note arrete la lecture.
+
+FONCTIONS CONSERVEES
+--------------------
+- 303 monophonique avec modes Piano Roll / Sequenceur MIDI declenche.
+- Sequenceur a 16 pas : NOTE (molette), SLIDE, ACCENT, ON/OFF, LEDs 1..16.
+- Compresseur trois bandes, distorsion Tube/Bitcrusher, delay, reverb.
+- Un seul volume general visible, automations de FL Studio.
+- Interface noire / grise, redimensionnable. Tempo pilote par FL Studio.
+
+COMPILATION WINDOWS / FL STUDIO
+------------------------------
+1. Fermer FL Studio et decomprimer ce ZIP dans un NOUVEAU dossier.
+2. Executer BUILD_WINDOWS.bat (Visual Studio 2022 C++, CMake, Git).
+3. Attendre le message COMPILATION TERMINEE.
+4. Faire une copie de sauvegarde de l'ancien dossier VST3. Sauvegarder avant
+   remplacement les presets eventuellement presents dans Contents\Presets.
+5. Copier le dossier complet cree :
+     build\Acid303Solo_artefacts\Release\VST3\Acid303 Solo.vst3
+   vers :
+     C:\Program Files\Common Files\VST3\
+6. Relancer FL Studio (rescanner le plugin si necessaire).
+7. Tester : sauvegarder un preset, cliquer DOSSIER pour le retrouver,
+   puis LOAD PRESET pour le recharger. Tester la vitesse 1/32 avec une note
+   C5 longue dans le Piano Roll en mode Sequenceur.
+
+Tests C++ autonomes : moteur, MIDI, longueur de boucle et toutes vitesses.
+La compilation JUCE/VST3 Windows et l'utilisation dans FL Studio restent
+necessaires pour valider definitivement la version.
+
+IMPORT / EXPORT MIDI V0.22
+-------------------------
+Trois nouvelles commandes sous la grille :
+    EXPORT MIDI : sauvegarde les pas 1 a longueur de boucle en fichier .mid
+    IMPORT MIDI : recharge une sequence .mid ou .midi dans les 16 pads
+    DOSSIER MIDI : ouvre Documents\Acid303\midi dans l'Explorateur.
+Le repertoire des presets reste Documents\Acid303\presets (inchange).
+Windows/OneDrive peut rediriger le dossier Documents : utiliser DOSSIER MIDI.
+
+Le .mid est un FICHIER MIDI STANDARD (SMF, type 0, PPQ=960) compatible avec
+les editeurs MIDI habituels, notamment le Piano Roll de FL Studio.
+- Chaque note encode sa hauteur et la position du pas.
+- ACCENT est exporte par la velocite (120 pour Accent, 74 sinon).
+- SLIDE est represente par le chevauchement de deux notes consecutives.
+- Une meta-information textuelle Acid303 integree au .mid preserve en plus
+  TOUS les 16 etats originaux, y compris les pas inactifs, leurs notes,
+  Slide et Accent, la vitesse (1/4, 1/8, 1/16, 1/32) et la longueur de boucle.
+- Reimporter le fichier sans le modifier reconstitue exactement la grille.
+- Un MIDI externe (ou modifie dans un logiciel qui retire cette meta-information)
+  est importe par quantification sur la vitesse actuelle du sequenceur :
+  notes, velocites et chevauchements sont traduits autant que possible.
+  Dans ce cas, aucune garantie de restitution parfaite du Slide n'est possible
+  car il n'existe pas de message universel 'SLIDE 303' en MIDI standard.
+
+EXPORT MIDI exporte un cycle de la boucle du sequenceur. Le mode SEQUENCEUR
+continue d'etre declenche par une note MIDI maintenue dans FL Studio :
+le fichier MIDI exporte n'est PAS le pattern de declenchement de la Playlist.
+Cette fonctionnalite ne change ni le moteur audio, ni les presets personnels.
+
+TEST CONSEILLE : activer Accent et Slide sur quelques pas, cliquer EXPORT MIDI,
+verifier le fichier dans Documents\Acid303\midi, modifier la grille puis
+cliquer IMPORT MIDI pour verifier que la sequence est restauree.
+
+
+
+VERSION 0.23 - DELAY STEREO
+------------------------
+Dans la section DELAY :
+- Selecteur NORMAL / PING-PONG (parametre VST3 delayMode).
+- Potentiometre WIDTH (parametre VST3 delayWidth) : 0% = echos au centre / mono ;
+  100% = ouverture stereo maximale. Les deux modes sont disponibles avec
+  TIME, FEEDBACK et DRY/WET inchanges.
+- NORMAL : repetitions classiques, espace stereo regle par WIDTH.
+- PING-PONG : 1er echo a gauche, puis echo a droite, alternativement.
+- Les repetions restent calees sur le tempo de FL Studio.
+- Les parametres existants ont garde leurs identifiants, et les presets
+  restent dans Documents/Acid303/presets. Les nouveaux parametres sont
+  sauvegardes dans le projet et dans les presets a partir de cette version.
+
+Installation : fermer FL Studio, executer BUILD_WINDOWS.bat dans un dossier
+extrait du ZIP, puis copier le repertoire compile Acid303 Solo.vst3 vers
+C:\Program Files\Common Files\VST3\ avant de rouvrir FL Studio.
+
+
+CORRECTIF v0.24.1 (COMPILATION MSVC)
+-----------------------------------
+Dans Source/PluginEditor.cpp, les boutons/menus/labels de type different sont
+places dans une std::array<juce::Component*, 15> au lieu d'une liste auto.
+Supprime les erreurs C3535/C2440 aux lignes 83-89 lors de la compilation MSVC.
+Aucun changement au moteur audio, aux parametres ou aux presets.
+La correction de priorite clavier reste a confirmer dans FL Studio.
+
+
+=== VERSION 0.26 : BARRE PRESETS ET SKINS ===
+
+La barre PRESET se trouve directement au-dessus des sections OSCILLATOR, FILTER, ENVELOPE et OUTPUT.
+Les boutons SAVE PRESET, LOAD PRESET et DOSSIER ne sont plus dans la zone du sequenceur.
+Le nom affiche est restaure lors du chargement d un fichier preset, ou lors de la restauration d un projet FL Studio.
+Le menu SKIN permet de choisir NEON GREEN ou ICE BLUE (base). Le theme choisi est un parametre VST3 enregistre dans les projets et presets.
+La structure peut accueillir plus tard de nouveaux skins sans modifier le moteur audio.
+Tous les anciens parametres audio et MIDI restent presents.

@@ -1,0 +1,10 @@
+Copiez les fichiers .acid303skin dans Documents\Acid303\skins
+
+Skins inclus :
+- V0.25 NEON GREEN
+- V0.26 DARK GRID
+- V0.24 CLASSIC
+- FIRE
+
+Le plugin Acid303 Solo v0.28 lit automatiquement ces fichiers au demarrage.
+Le skin FIRE a ete concu avec un contraste eleve pour garder une lecture facile.

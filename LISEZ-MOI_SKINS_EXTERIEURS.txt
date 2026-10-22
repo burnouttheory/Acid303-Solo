@@ -1,0 +1,18 @@
+ACID303 SOLO V0.28 - SKINS EXTERIEURS
+
+Nouveautes:
+- Le plugin cree/lit le dossier Documents\Acid303\skins
+- Les skins sont des fichiers .acid303skin
+- Skins inclus dans FactorySkins:
+  * V0.25 NEON GREEN
+  * V0.26 DARK GRID
+  * V0.24 CLASSIC
+  * FIRE
+
+Utilisation:
+1. Copier les fichiers .acid303skin dans Documents\Acid303\skins
+2. Ouvrir Acid303 Solo dans FL Studio
+3. Aller en haut a droite, menu SKINS
+4. Choisir le skin desire
+
+Le skin FIRE a un contraste eleve pour garder une lecture confortable.

@@ -1,0 +1,31 @@
+ACID303 SOLO v0.28.4 - CORRECTIF DE DETECTION DES SKINS
+
+CAUSE IDENTIFIEE :
+Les anciens fichiers BW.acid303skin et W&B.acid303skin contenaient
+un caractere & non echappe dans leur attribut XML name.
+Le lecteur refusait donc de les charger.
+
+CORRECTIONS :
+- Fichiers B&W et W&B reparés, avec un XML valide.
+- Le moteur de skins tolere aussi les anciens fichiers B&W / W&B invalides.
+- La liste des skins se met a jour automatiquement (toutes les ~2 secondes)
+  quand le menu deroulant n'est pas ouvert.
+- Lisibilite amelioree pour les skins a fond clair, notamment W&B.
+- Le correctif de la barre des presets v0.28.3 est conserve.
+- Les fonctions audio, MIDI et sequenceur restent identiques.
+
+INSTALLATION RAPIDE (SANS RECOMPILER) :
+1. Ouvrir le dossier "Documents\Acid303\skins" sur Windows.
+   NB : Windows / OneDrive peut rediriger Documents ; utiliser le vrai dossier Documents.
+2. Copier les fichiers du dossier "Skins corriges" dans ce dossier.
+3. Accepter "Remplacer les fichiers" pour BW et W&B.
+4. Fermer puis rouvrir l'interface Acid303 Solo, et selectionner B&W ou W&B.
+
+INSTALLATION DU PROJET v0.28.4 (POUR ACCEPTATION DES ANCIENS FICHIERS) :
+1. Decompresser le ZIP complet dans un nouveau dossier.
+2. Lancer BUILD_WINDOWS.bat avec Visual Studio 2022.
+3. Apres compilation reussie, remplacer le VST3 dans Program Files/Common Files/VST3.
+4. Relancer FL Studio.
+
+CONVENTION : les noms avec & doivent etre ecrits sous forme &amp; dans le
+texte des fichiers .acid303skin. Le nom affiché peut rester B&W ou W&B.

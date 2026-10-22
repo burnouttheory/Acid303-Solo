@@ -1,0 +1,31 @@
+ACID303 SOLO - V0.27 : PRESETS ET SKINS
+
+1. BANDE DE PRESETS AU-DESSUS DES QUATRE SECTIONS AUDIO
+Les deux petites fleches < et > encadrent le nom du preset.
+Chaque clic charge le preset precedent ou suivant dans l'ordre alphabetique
+des fichiers .acid303preset presents dans Documents\Acid303\presets.
+La liste est parcourue en boucle. Si le preset actuel est absent du dossier,
+la fleche droite charge le premier et la fleche gauche le dernier.
+Une alerte indique lorsque le dossier ne contient aucun preset.
+IMPORTANT : changer de preset remplace les reglages actuels et les 16 pas.
+Enregistrez vos modifications avec SAVE PRESET avant de parcourir la liste.
+
+2. SKINS EN HAUT A DROITE
+Le menu deroulant SKINS se trouve immediatement a droite de l'affichage
+FL STUDIO ... BPM, dans l'angle superieur droit. Cliquez sur la petite fleche
+du menu pour choisir :
+ - NEON GREEN (V0.25) : look de la version 0.25 (par defaut) ;
+ - ICE BLUE : variante bleu glace.
+
+Le skin fait partie des parametres de l'instance du plugin enregistres
+dans un projet FL Studio (.flp). Ce n'est pas un parametre global a toutes
+les instances. Les presets Acid303 peuvent egalement enregistrer ce choix.
+Le skin change l'apparence, pas le son.
+
+3. INSTALLATION
+Fermer FL Studio. Decompresser le ZIP dans un nouveau dossier.
+Executer BUILD_WINDOWS.bat et verifier la reussite de la compilation.
+Copier le nouveau dossier Acid303 Solo.vst3 dans
+C:\Program Files\Common Files\VST3 en remplacant l'ancien.
+Rouvrir FL Studio et tester le menu SKINS et les deux fleches.
+Moteur audio, MIDI, sequencer, effets et presets inchanges.

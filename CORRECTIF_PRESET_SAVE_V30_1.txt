@@ -1,0 +1,29 @@
+ACID303 SOLO v0.30.1 - CORRECTION DE LA SAUVEGARDE DE PRESETS
+
+PROBLEME CORRIGE
+Avant, SAVE PRESET proposait systematiquement « Mon preset.acid303preset ».
+Apres ce correctif, la fenetre de sauvegarde reprend le nom du preset actuellement charge.
+
+EXEMPLE
+1. Charger « 001_BASS_SUB_PULSE » dans Acid303 Solo.
+2. Modifier CUTOFF, RESO ou les pas du sequenceur.
+3. Cliquer sur SAVE PRESET.
+4. Le nom « 001_BASS_SUB_PULSE.acid303preset » est maintenant propose automatiquement.
+5. Choisir l'une des deux possibilites :
+   a) Garder ce nom, puis confirmer le remplacement du preset existant.
+   b) Modifier le nom (par exemple « 001_BASS_SUB_PULSE_V2 ») pour creer une nouvelle version.
+
+Si aucun preset n'a ete charge, le nom propose reste « Mon preset ».
+Les fichiers sont sauves par defaut dans Documents\Acid303\presets.
+L'avertissement Windows de remplacement reste actif : aucune suppression silencieuse.
+Les fonctionnalites audio, MIDI, skins et notification de mise a jour restent inchangees.
+
+INSTALLATION RAPIDE DU CORRECTIF
+Option A (rapide) : remplacer uniquement Source\PluginEditor.cpp dans le projet v0.30 actuel,
+puis relancer BUILD_WINDOWS.bat. Si vous gardez l'ancien projet, le numero de version reste 0.30.0.
+Option B (projet complet v0.30.1) : decompresser ce ZIP dans un nouveau dossier,
+lancer BUILD_WINDOWS.bat, puis Installeur\CREER_INSTALLATEUR.bat si vous souhaitez un .exe.
+Fermer FL Studio avant de remplacer le VST3 ou de lancer l'installateur.
+
+Note: la compilation VST3 complete sous Windows et le test de la fenetre Save
+restent a valider sur un ordinateur Windows avec JUCE, Visual Studio et FL Studio.

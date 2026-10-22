@@ -1,0 +1,10 @@
+ACID303 SOLO v0.28.1 - CORRECTIF AFFICHAGE
+
+Le texte SYNC : 1/4 (ou autre subdivision du delay) etait place trop bas et chevauchait le contour rouge inferieur du bloc DELAY.
+
+Le label a ete deplace vers le haut, sous les potentiometres, et recentre dans le bloc DELAY.
+Aucun changement des parametres sonores, presets, skins, fonctions MIDI ou sequenceur.
+
+Pour compiler : lancer BUILD_WINDOWS.bat, puis installer le nouveau VST3 dans C:\Program Files\Common Files\VST3\.
+
+Alternativement, copier uniquement Source\PluginEditor.cpp dans un projet Acid303 v0.28 existant et recompiler.

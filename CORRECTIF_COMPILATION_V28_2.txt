@@ -1,0 +1,17 @@
+ACID303 SOLO - VERSION 0.28.2
+
+CORRECTION
+La version v0.28.1 contenait une accolade superflue (ligne 190 de Source/PluginEditor.cpp), causant des erreurs Visual Studio C2059, C2143 et C2447. Cette accolade a ete supprimee.
+
+Le correctif d'affichage SYNC: 1/4 de la v0.28.1 est conserve (panneau DELAY).
+Les skins externes, le skin FIRE, le sequenceur et les presets sont conserves.
+
+UTILISATION
+1. Decompresser le ZIP dans un nouveau dossier.
+2. Lancer BUILD_WINDOWS.bat.
+3. Si la compilation se termine sans erreur, copier le dossier .vst3 dans C:\Program Files\Common Files\VST3\ (apres fermeture de FL Studio).
+4. Rouvrir FL Studio.
+
+Pour correction rapide d'une v0.28.1 existante : remplacer uniquement Source/PluginEditor.cpp par celui de la v0.28.2, puis relancer BUILD_WINDOWS.bat.
+
+La compilation JUCE/VST3 native sous Windows doit etre validee sur ton PC.

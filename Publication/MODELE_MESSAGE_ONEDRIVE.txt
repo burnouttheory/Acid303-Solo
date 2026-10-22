@@ -1,0 +1,16 @@
+Bonjour,
+
+Une nouvelle version d'Acid303 Solo est disponible.
+
+Version : 0.30.0
+Telechargement : [VOTRE LIEN ONEDRIVE PUBLIC]
+
+Procedure :
+1. Sauvegardez votre projet et fermez FL Studio.
+2. Ouvrez le lien de telechargement ci-dessus.
+3. Telechargez le programme Acid303Solo_Setup_0.30.0.exe.
+4. Lancez-le puis suivez les instructions.
+5. L'installateur propose le dossier habituel des VST3 et conserve vos fichiers MIDI, presets et skins.
+6. Relancez FL Studio.
+
+Le logiciel reste gratuit. Aucun compte OneDrive n'est necessaire si le partage public est autorise.

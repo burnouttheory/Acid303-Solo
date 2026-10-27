@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "WebUpdate.h"
+#include "I18n.h"
 #include <vector>
 #include <functional>
 
@@ -56,6 +57,16 @@ private:
     VintageKnobLook knobLook;
     Acid303SequenceGrid sequenceGrid;
     juce::TextButton modeButton{"MODE : PIANO ROLL"};
+    juce::Slider patternGroupKnob, patternNumberKnob;
+    juce::TextButton bankTriggerButton{"MIDI BANKS : OFF"};
+    juce::Label bankStatusLabel;
+    juce::ComboBox transposeChoice;
+    juce::Label transposeLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> transposeAttachment;
+    juce::TextButton midiPatternMapButton{"CARTE MIDI"};
+
+    juce::TextButton randomButton{"RANDOM 16"};
+    juce::TextButton midiSetupButton{"MIDI CONTROLLER"};
     juce::ComboBox rateChoice;
     juce::Label rateLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> rateAttachment;
@@ -74,9 +85,13 @@ private:
     juce::TextButton nextPresetButton{">"};
     juce::Label skinLabel;
     juce::ComboBox skinChoice;
+    juce::ComboBox languageChoice;
+    int lastLanguageId = 0;
+    void applyLanguage();
     juce::StringArray availableSkinNames;
     int skinScanTicks = 0;
     std::unique_ptr<juce::FileChooser> presetChooser;
+    juce::File lastSelectedPreset; // Selection unique to this plugin instance.
     void choosePresetFile(bool saving);
     void stepUserPreset(int direction);
     juce::TextButton exportMidiButton{"EXPORT MIDI"};

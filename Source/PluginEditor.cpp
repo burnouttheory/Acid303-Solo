@@ -1,11 +1,44 @@
 #include "PluginEditor.h"
+#include "BinaryData.h"
 #include <array>
 #include <algorithm>
 #include <cmath>
 #include <set>
 
 namespace {
-constexpr float virtualWidth = 1200.0f;
+using acid303i18n::tr;
+
+// User-wide selection (shared across FL Studio sessions). Never stored inside
+// Factory/User and never bundled with the plugin: updates preserve this file.
+juce::File getPresetDirectoryHistoryFile() {
+    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+        .getChildFile("Acid303Solo").getChildFile("last_preset_folder.txt");
+}
+
+juce::File getLastPresetDirectory() {
+    const auto root = Acid303SoloProcessor::getUserPresetFolder();
+    const auto history = getPresetDirectoryHistoryFile();
+    if (history.existsAsFile()) {
+        const auto remembered = history.loadFileAsString().trim();
+        if (remembered.isNotEmpty() && juce::File::isAbsolutePath(remembered)) {
+            const juce::File candidate(remembered);
+            if (candidate.isDirectory()) return candidate;
+        }
+    }
+    // A deleted or moved folder must never prevent the native picker opening.
+    return root;
+}
+
+void rememberLastPresetDirectory(const juce::File& directory) {
+    if (!directory.isDirectory()) return;
+    const auto history = getPresetDirectoryHistoryFile();
+    if (history.getParentDirectory().createDirectory().failed()) return;
+    juce::TemporaryFile temp(history);
+    if (temp.getFile().replaceWithText(directory.getFullPathName()))
+        (void) temp.overwriteTargetFileWithTemporary();
+}
+
+constexpr float virtualWidth = 1440.0f;
 constexpr float virtualHeight = 900.0f;
 const juce::Colour blackMetal(0xff030506);
 const juce::Colour neonGreen(0xff4cff72);
@@ -28,7 +61,16 @@ struct SkinTheme {
     juce::Colour dim{0xff42604a};
 };
 
-juce::String defaultSkinName() { return "V1 ORIGINAL"; }
+SkinTheme makeThemeV3Gray() {
+    SkinTheme t; t.name="TB303 GREY V3";
+    t.accent=juce::Colour(0xff64ee9b); t.soft=juce::Colour(0xffadffd1);
+    t.body=juce::Colour(0xffc3c4c5); t.deep=juce::Colour(0xffacadb0);
+    t.panel=juce::Colour(0xff202224); t.crackA=juce::Colour(0xffc3c5c7);
+    t.crackB=juce::Colour(0xffa7aaac); t.dim=juce::Colour(0xff548d71);
+    t.fxAccent=juce::Colour(0xff64ee9b); t.fxGlow=juce::Colour(0xff2a624c);
+    return t;
+}
+juce::String defaultSkinName() { return "TB303 GREY V3"; }
 
 // "V1 ORIGINAL" matches the 22 Oct 2026 reference screenshot palette.
 // The associated geometry and custom pad/knob rendering are in this editor.
@@ -74,7 +116,7 @@ SkinTheme makeThemeFire() {
     return t;
 }
 std::vector<SkinTheme> factoryThemes() {
-    return { makeThemeV1(), makeThemeV25(), makeThemeV26(), makeThemeV24(), makeThemeFire() };
+    return { makeThemeV3Gray(), makeThemeV1(), makeThemeV25(), makeThemeV26(), makeThemeV24(), makeThemeFire() };
 }
 
 juce::String colourHex(juce::Colour c) {
@@ -149,6 +191,22 @@ bool loadSkinFile(const juce::File& file, SkinTheme& out) {
 }
 
 SkinTheme resolveSkinThemeByName(const juce::String& requestedName) {
+    // V3 Grey skin hot-replacement: the user's .acid303skin has priority over
+    // the built-in version. Other factory skins keep their original behaviour.
+    if (requestedName == "TB303 GREY V3") {
+        const auto custom = Acid303SoloProcessor::getUserSkinFolder()
+            .getChildFile("TB303_GREY_V3.acid303skin");
+        SkinTheme replacement;
+        if (loadSkinFile(custom, replacement) && replacement.name == requestedName) {
+            // Legacy TB303 GREY was bundled in fluorescent yellow. If that
+            // untouched old palette is still present, prefer the new green
+            // factory palette without overwriting user-authored skin files.
+            if (replacement.accent == juce::Colour(0xffffff08)
+                && replacement.soft == juce::Colour(0xffffff75))
+                return makeThemeV3Gray();
+            return replacement;
+        }
+    }
     for (const auto& theme : factoryThemes()) if (theme.name == requestedName) return theme;
     const auto folder = Acid303SoloProcessor::getUserSkinFolder();
     const auto exact = folder.getChildFile(skinFileName(requestedName));
@@ -158,7 +216,7 @@ SkinTheme resolveSkinThemeByName(const juce::String& requestedName) {
         SkinTheme candidate;
         if (loadSkinFile(f, candidate) && candidate.name == requestedName) return candidate;
     }
-    return makeThemeV1();
+    return makeThemeV3Gray();
 }
 
 juce::String getStoredSkinName(const Acid303SoloProcessor& p) {
@@ -193,8 +251,73 @@ void drawCrackTexture(juce::Graphics& g, juce::Rectangle<float> area, const Skin
     g.restoreState();
 }
 
+// V3 Grey Metal Yellow skin: non-interactive painting only. Everything here
+// executes on JUCE's UI thread; no audio/host parameter is changed.
+void paintBrushedSteel(juce::Graphics& g, juce::Rectangle<float> r) {
+    g.saveState();
+    g.reduceClipRegion(r.toNearestInt());
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xffdadbdd),r.getX(),r.getY(),
+                      juce::Colour(0xff9b9da0),r.getRight(),r.getBottom(),false));
+    g.fillRect(r);
+    // Deterministic fine horizontal streaks: no random CPU work and no assets.
+    for (int i = 0; i < 30; ++i) {
+        const float yy = r.getY() + r.getHeight()*float(i+1)/31.0f;
+        const float xx = r.getX() + float((i*37)%19);
+        g.setColour(i%3 == 0 ? juce::Colours::white.withAlpha(0.070f)
+                              : juce::Colours::black.withAlpha(0.036f));
+        g.drawLine(xx, yy, r.getRight()-float((i*11)%16), yy, 0.65f);
+    }
+    g.restoreState();
+}
+
+void paintSteelScrew(juce::Graphics& g, float cx, float cy) {
+    constexpr float r = 5.4f;
+    g.setColour(juce::Colour(0xff3a3a3b));
+    g.fillEllipse(cx-r-0.6f, cy-r-0.6f, 2*r+1.2f, 2*r+1.2f);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xfffafafa),cx-r,cy-r,
+                      juce::Colour(0xff717376),cx+r,cy+r,false));
+    g.fillEllipse(cx-r+0.5f, cy-r+0.5f, 2*r-1.f, 2*r-1.f);
+    g.setColour(juce::Colour(0xff292b2e));
+    g.drawLine(cx-2.5f, cy-2.f, cx+2.5f, cy+2.f, 1.5f);
+    g.setColour(juce::Colours::white.withAlpha(0.36f));
+    g.drawLine(cx-2.5f, cy-3.f, cx+2.5f, cy+1.f, 0.6f);
+}
+
+void paintPanelScrews(juce::Graphics& g, juce::Rectangle<float> r) {
+    constexpr float d=9.f;
+    paintSteelScrew(g,r.getX()+d,r.getY()+d);
+    paintSteelScrew(g,r.getRight()-d,r.getY()+d);
+    paintSteelScrew(g,r.getX()+d,r.getBottom()-d);
+    paintSteelScrew(g,r.getRight()-d,r.getBottom()-d);
+}
+
 void panel(juce::Graphics& g, juce::Rectangle<float> r, const juce::String& title,
            const juce::String& sub, bool redMode, const SkinTheme& theme) {
+    if (theme.name == "TB303 GREY V3") {
+        // User-approved metal look: silver interior, uniform soft neon green
+        // hairline borders, dark title strips and screws at four panel corners.
+        g.setColour(juce::Colours::black.withAlpha(0.23f));
+        g.fillRoundedRectangle(r.translated(1.2f, 2.2f), 6.0f);
+        g.saveState();
+        g.reduceClipRegion(r.toNearestInt());
+        paintBrushedSteel(g,r);
+        g.restoreState();
+        g.setColour(theme.accent);
+        g.drawRoundedRectangle(r.reduced(0.7f),6.0f,1.15f);
+        const auto header=juce::Rectangle<float>(r.getX()+9.0f,r.getY()+7.0f,
+                                                 r.getWidth()-18.0f,29.0f);
+        g.setColour(theme.panel);
+        g.fillRoundedRectangle(header,3.5f);
+        g.setColour(theme.accent);
+        g.fillEllipse(header.getX()+8.0f,header.getY()+9.0f,10.0f,10.0f);
+        g.setFont(juce::Font(juce::FontOptions(16.0f).withStyle("Bold")));
+        g.drawText(title,header.withTrimmedLeft(26.0f).reduced(0,2),
+                   juce::Justification::centredLeft);
+        g.setFont(juce::Font(juce::FontOptions(10.0f).withStyle("Bold")));
+        g.drawText(sub,header.reduced(14,2),juce::Justification::centredRight);
+        paintPanelScrews(g,r);
+        return;
+    }
     if (theme.name == "V1 ORIGINAL") {
         // Reference: flat slate background, thin steel outlines and muted red FX sections.
         const auto outline = redMode ? juce::Colour(0xffad4352) : juce::Colour(0xff52636c);
@@ -242,6 +365,132 @@ void panel(juce::Graphics& g, juce::Rectangle<float> r, const juce::String& titl
 }
 
 
+// V2.0.3: MIDI configuration uses the FL Studio host's verified native
+// Link to Controller / Multilink workflow. No experimental direct CC mapping.
+// Host-side automation links are saved by FL Studio in its .flp project.
+class Acid303MidiSetupPanel final : public juce::Component, private juce::Timer {
+public:
+    Acid303MidiSetupPanel() {
+        setSize(690, 440);
+        title.setFont(juce::Font(juce::FontOptions(19.0f).withStyle("Bold")));
+        title.setColour(juce::Label::textColourId, juce::Colour(0xff90ffba));
+        caption.setFont(juce::Font(juce::FontOptions(13.0f)));
+        caption.setColour(juce::Label::textColourId, juce::Colour(0xffc6d5cf));
+        feedback.setFont(juce::Font(juce::FontOptions(12.0f)));
+        feedback.setColour(juce::Label::textColourId, juce::Colour(0xffa5ffc8));
+        for (auto* label : {&title, &caption, &feedback}) addAndMakeVisible(*label);
+        for (auto* button : {&openManual, &copySteps}) {
+            button->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff286749));
+            button->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+            keepHostKeyboardFocus(*button);
+            addAndMakeVisible(*button);
+        }
+        openManual.onClick = [] {
+            juce::URL("https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/automation_linking.htm")
+                .launchInDefaultBrowser();
+        };
+        copySteps.onClick = [this] {
+            juce::SystemClipboard::copyTextToClipboard(getFLSteps());
+            feedback.setText(tr("Instructions copiées dans le presse-papiers.",
+                                "Instructions copied to clipboard."), juce::dontSendNotification);
+        };
+        applyPanelLanguage();
+        startTimerHz(2);
+    }
+
+    void paint(juce::Graphics& g) override {
+        g.fillAll(juce::Colour(0xff101b20));
+        g.setColour(juce::Colour(0xff4d9f70));
+        g.drawRect(getLocalBounds().reduced(1), 1);
+        auto card = [&g](juce::Rectangle<int> area) {
+            g.setColour(juce::Colour(0xff1a292d));
+            g.fillRoundedRectangle(area.toFloat(), 6.0f);
+            g.setColour(juce::Colour(0xff3d6b5b));
+            g.drawRoundedRectangle(area.toFloat(), 6.0f, 1.0f);
+        };
+        card({19, 93, 652, 123});
+        card({19, 224, 652, 117});
+        g.setColour(juce::Colour(0xff98ffc5));
+        g.setFont(juce::Font(juce::FontOptions(14.5f).withStyle("Bold")));
+        g.drawText(tr("1. UN POTENTIOMÈTRE (testé avec AKAI MPK Mini)",
+                      "1. ONE KNOB (tested with AKAI MPK Mini)"),
+                   30, 105, 625, 22, juce::Justification::centredLeft);
+        g.drawText(tr("2. PLUSIEURS POTENTIOMÈTRES (Multilink)",
+                      "2. MULTIPLE KNOBS (Multilink)"),
+                   30, 236, 625, 22, juce::Justification::centredLeft);
+        g.setColour(juce::Colour(0xffe1eae7));
+        g.setFont(juce::Font(juce::FontOptions(13.2f)));
+        g.drawFittedText(tr("Activez votre contrôleur dans Options > MIDI Settings.\n"
+                            "Clic droit sur CUTOFF (ou un autre potentiomètre) > Link to controller.\n"
+                            "Tournez la commande MIDI physique, puis validez la fenêtre de liaison.",
+                            "Enable your controller in Options > MIDI Settings.\n"
+                            "Right-click CUTOFF (or another knob) > Link to controller.\n"
+                            "Turn the hardware MIDI control, then confirm the link dialog."),
+                         juce::Rectangle<int>(31, 134, 625, 74), juce::Justification::topLeft, 4);
+        g.drawFittedText(tr("Activez Multilink dans la barre d'outils FL Studio.\n"
+                            "Manipulez les paramètres Acid303 dans l'ordre souhaité, puis\n"
+                            "tournez les potentiomètres physiques dans le même ordre.",
+                            "Enable Multilink from the FL Studio toolbar.\n"
+                            "Move Acid303 parameters in the desired order, then turn\n"
+                            "the corresponding hardware knobs in the same order."),
+                         juce::Rectangle<int>(31, 265, 625, 68), juce::Justification::topLeft, 4);
+        g.setColour(juce::Colour(0xffc4d2ce));
+        g.setFont(juce::Font(juce::FontOptions(12.0f)));
+        g.drawFittedText(tr("Les affectations sont gérées par FL Studio : enregistrez le projet .flp.",
+                            "Mappings are managed by FL Studio: save your .flp project."),
+                         juce::Rectangle<int>(20, 345, 652, 22),
+                         juce::Justification::centredLeft, 2);
+    }
+
+    void resized() override {
+        title.setBounds(20, 13, 650, 30);
+        caption.setBounds(20, 47, 650, 23);
+        openManual.setBounds(19, 380, 315, 35);
+        copySteps.setBounds(345, 380, 326, 35);
+        feedback.setBounds(20, 420, 640, 16);
+    }
+
+private:
+    juce::Label title, caption, feedback;
+    juce::TextButton openManual, copySteps;
+    int panelLanguageId = 0;
+
+    juce::String getFLSteps() const {
+        return tr("ACID303 SOLO - LIAISON MIDI FL STUDIO\n"
+                  "1. Options > MIDI Settings : activer votre contrôleur MIDI.\n"
+                  "2. Clic droit sur CUTOFF > Link to controller.\n"
+                  "3. Tourner le potentiomètre physique puis valider.\n"
+                  "Plusieurs paramètres : activer Multilink, manipuler les commandes "
+                  "Acid303 puis tourner les potentiomètres physiques dans le même ordre.\n"
+                  "Enregistrer le projet .flp.\n"
+                  "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/automation_linking.htm",
+                  "ACID303 SOLO - FL STUDIO MIDI LINK\n"
+                  "1. Options > MIDI Settings: enable your MIDI controller.\n"
+                  "2. Right-click CUTOFF > Link to controller.\n"
+                  "3. Turn a physical knob and confirm.\n"
+                  "For multiple parameters: enable Multilink, move the Acid303 controls "
+                  "then turn your hardware knobs in the same order.\n"
+                  "Save your .flp project.\n"
+                  "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/automation_linking.htm");
+    }
+
+    void applyPanelLanguage() {
+        panelLanguageId = static_cast<int>(acid303i18n::current());
+        title.setText(tr("CONFIGURATION MIDI / ACID303 SOLO V3.0.0",
+                          "MIDI SETUP / ACID303 SOLO V3.0.0"), juce::dontSendNotification);
+        caption.setText(tr("Liaison MIDI via FL Studio — compatible avec les contrôleurs standard.",
+                            "MIDI linking via FL Studio — compatible with standard controllers."),
+                        juce::dontSendNotification);
+        openManual.setButtonText(tr("OUVRIR LE MANUEL FL STUDIO", "OPEN FL STUDIO MANUAL"));
+        copySteps.setButtonText(tr("COPIER LES INSTRUCTIONS", "COPY INSTRUCTIONS"));
+        feedback.setText(juce::String{}, juce::dontSendNotification);
+        repaint();
+    }
+    void timerCallback() override {
+        if (panelLanguageId != static_cast<int>(acid303i18n::current())) applyPanelLanguage();
+    }
+};
+
 void VintageKnobLook::drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h,
                                         float pos, float start, float end, juce::Slider&) {
     const auto area=juce::Rectangle<float>((float)x,(float)y,(float)w,(float)h).reduced(4.0f);
@@ -256,23 +505,25 @@ void VintageKnobLook::drawRotarySlider(juce::Graphics& g, int x, int y, int w, i
         g.setColour(accentColour.withAlpha(i % 3 == 0 ? 0.95f : 0.55f));
         g.drawLine(sx,sy,ex,ey,i%3==0?1.8f:1.0f);
     }
-    g.setColour(juce::Colours::black.withAlpha(0.42f));
-    g.fillEllipse(cx-radius+1,cy-radius+3,2*radius,2*radius);
-    g.setGradientFill(juce::ColourGradient(silver1,cx-radius*0.8f,cy-radius,
-                       silver3,cx+radius,cy+radius,false));
-    g.fillEllipse(cx-radius,cy-radius,2*radius,2*radius);
-    g.setColour(silver2.withAlpha(0.95f));
-    g.drawEllipse(cx-radius+1,cy-radius+1,2*radius-2,2*radius-2,1.2f);
-    g.setColour(juce::Colour(0xff444b52));
-    g.fillEllipse(cx-radius*0.72f,cy-radius*0.72f,1.44f*radius,1.44f*radius);
-    g.setColour(juce::Colours::white.withAlpha(0.18f));
-    g.fillEllipse(cx-radius*0.45f,cy-radius*0.68f,radius*0.58f,radius*0.24f);
-    const float tip=radius*0.77f;
-    g.setColour(accentColour);
-    g.drawLine(cx+std::sin(a)*radius*0.22f,cy-std::cos(a)*radius*0.22f,
-               cx+std::sin(a)*tip,cy-std::cos(a)*tip,3.6f);
-    g.setColour(accentColour.brighter(0.4f).withAlpha(0.75f));
-    g.fillEllipse(cx-3.0f, cy-3.0f, 6.0f, 6.0f);
+    // Original TB303.knob model supplied by the user, embedded in V3 binary resources.
+    // The face is rotated for visual tracking; separate tick ring retains the host angle.
+    auto knob=juce::ImageCache::getFromMemory(BinaryData::TB303_Knob_png,
+                                              BinaryData::TB303_Knob_pngSize);
+    if (knob.isValid()) {
+        const float size=radius*2.35f;
+        const juce::Rectangle<float> target(cx-size*0.5f,cy-size*0.5f,size,size);
+        const float modelNeedleAngle=3.84f; // dark pointer in the supplied 64 px knob
+        g.drawImageTransformed(knob,
+            juce::AffineTransform::scale(size/float(knob.getWidth()),size/float(knob.getHeight()))
+                .translated(target.getX(),target.getY())
+                .rotated(a-modelNeedleAngle,cx,cy));
+    } else {
+        g.setGradientFill(juce::ColourGradient(silver1,cx-radius,cy-radius,
+                                               silver3,cx+radius,cy+radius,false));
+        g.fillEllipse(cx-radius,cy-radius,2*radius,2*radius);
+        g.setColour(accentColour); g.drawLine(cx,cy,cx+std::sin(a)*radius*0.8f,
+                                                cy-std::cos(a)*radius*0.8f,3.f);
+    }
 }
 
 Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
@@ -282,13 +533,14 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
     // Explicit base pointer type is necessary: these controls are a mixture of
     // juce::TextButton, juce::ComboBox and juce::Label. MSVC cannot deduce a
     // common initializer_list type from different derived pointer classes.
-    const std::array<juce::Component*, 21> keyboardFocusControls{{
-        &modeButton, &rateChoice, &rateLabel,
+    const std::array<juce::Component*, 27> keyboardFocusControls{{
+        &modeButton, &randomButton, &midiSetupButton, &rateChoice, &rateLabel,
         &savePresetButton, &loadPresetButton, &presetFolderButton, &updateButton,
-        &previousPresetButton, &presetNameLabel, &nextPresetButton, &skinLabel, &skinChoice,
+        &previousPresetButton, &presetNameLabel, &nextPresetButton, &skinLabel, &skinChoice, &languageChoice,
         &exportMidiButton, &importMidiButton, &midiFolderButton,
         &delayModeChoice, &delaySubdivision,
-        &prevDistType, &nextDistType, &distTypeName, &tempoLabel
+        &prevDistType, &nextDistType, &distTypeName, &tempoLabel,
+        &transposeChoice, &transposeLabel, &midiPatternMapButton
     }};
     for (auto* control : keyboardFocusControls)
         keepHostKeyboardFocus(*control);
@@ -323,7 +575,7 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
     distTypeName.setColour(juce::Label::backgroundColourId, juce::Colour(0xff07130b));
     distTypeName.setColour(juce::Label::textColourId, neonGreen);
     distTypeName.setFont(juce::Font(juce::FontOptions(13.0f).withStyle("Bold")));
-    distTypeName.setTooltip("Type de distortion. Les fleches changent le parametre VST3 automatisable.");
+    distTypeName.setTooltip("Deux modes : TUBE (overdrive acid a diodes ameliore) et BITCRUSHER. Les anciens presets gardent leur choix.");
     addAndMakeVisible(distTypeName);
     tempoLabel.setJustificationType(juce::Justification::centredRight);
     tempoLabel.setColour(juce::Label::textColourId,neonGreen);
@@ -343,6 +595,87 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
     delayModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         processor.params, "delayMode", delayModeChoice);
     addAndMakeVisible(sequenceGrid);
+    for (auto* knob : {&patternGroupKnob,&patternNumberKnob}) {
+        knob->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        knob->setRotaryParameters(juce::degreesToRadians(225.0f),
+                                  juce::degreesToRadians(495.0f),true);
+        knob->setRange(0,7,1);
+        knob->setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);
+        knob->setLookAndFeel(&knobLook);
+        knob->setPopupDisplayEnabled(false,false,this);
+        addAndMakeVisible(*knob);
+        keepHostKeyboardFocus(*knob);
+    }
+    patternGroupKnob.setTooltip("TB-303 groups: 1A 1B 2A 2B 3A 3B 4A 4B");
+    patternNumberKnob.setTooltip("Pattern 1 to 8. 8 groups x 8 patterns = 64.");
+    patternGroupKnob.onValueChange=[this] { processor.selectPatternByKnobs(
+        juce::roundToInt(patternGroupKnob.getValue()), juce::roundToInt(patternNumberKnob.getValue()));
+        sequenceGrid.repaint(); repaint(); };
+    patternNumberKnob.onValueChange=[this] { processor.selectPatternByKnobs(
+        juce::roundToInt(patternGroupKnob.getValue()), juce::roundToInt(patternNumberKnob.getValue()));
+        sequenceGrid.repaint(); repaint(); };
+    patternGroupKnob.setValue(processor.getPatternGroup(),juce::dontSendNotification);
+    patternNumberKnob.setValue(processor.getPatternNumber(),juce::dontSendNotification);
+    bankTriggerButton.setTooltip("Enabled only with SEQUENCER. MIDI notes 36..99 select/loop 64 patterns. OFF: legacy 2.0.6 behavior.");
+    bankTriggerButton.onClick=[this] { processor.setBankTriggerEnabled(!processor.getBankTriggerEnabled()); timerCallback(); };
+    bankTriggerButton.setColour(juce::TextButton::buttonColourId,blackMetal);
+    bankTriggerButton.setColour(juce::TextButton::textColourOffId,neonGreen);
+    addAndMakeVisible(bankTriggerButton);
+    bankStatusLabel.setJustificationType(juce::Justification::centred);
+    bankStatusLabel.setFont(juce::Font(juce::FontOptions(11.0f)));
+    addAndMakeVisible(bankStatusLabel);
+    transposeLabel.setText("TRANSPOSE", juce::dontSendNotification);
+    transposeLabel.setJustificationType(juce::Justification::centred);
+    transposeLabel.setFont(juce::Font(juce::FontOptions(12.f).withStyle("Bold")));
+    addAndMakeVisible(transposeLabel);
+    for (int semitones=-12; semitones<=12; ++semitones)
+        transposeChoice.addItem(juce::String(semitones > 0 ? "+" : "") + juce::String(semitones)
+            + (semitones == 0 ? " / ORIGINAL" : " DEMI-TONS"), semitones + 13);
+    transposeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        processor.params, "bankTranspose", transposeChoice);
+    transposeChoice.setTooltip("Transposition globale des 64 patterns, -12 à +12 demi-tons. Exemple : do -> fa = +5. Les notes originales ne sont jamais modifiees.");
+    addAndMakeVisible(transposeChoice);
+    midiPatternMapButton.setTooltip("Afficher les 64 notes de déclenchement du piano roll et copier toute la table.");
+    midiPatternMapButton.onClick = [this] {
+        static const juce::StringArray groups = {"1A", "1B", "2A", "2B", "3A", "3B", "4A", "4B"};
+        static const juce::StringArray pitches = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+        juce::PopupMenu menu;
+        menu.addSectionHeader("PIANO ROLL - MIDI 36..99 (64 patterns)");
+        menu.addItem(9999, "COPIER LES 64 CORRESPONDANCES");
+        for (int group=0; group<8; ++group) {
+            juce::PopupMenu bankMenu;
+            for (int number=0; number<8; ++number) {
+                const int midi=36+group*8+number;
+                bankMenu.addItem(1+group*8+number, "Pattern " + juce::String(number+1)
+                    + "  -  MIDI " + juce::String(midi) + " / "
+                    + pitches[midi%12] + juce::String(midi/12));
+            }
+            menu.addSubMenu("GROUPE " + groups[group], bankMenu);
+        }
+        menu.addSeparator();
+        menu.addSectionHeader("La numérotation des octaves peut varier suivant FL Studio.");
+        juce::Component::SafePointer<Acid303SoloEditor> safe(this);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&midiPatternMapButton),
+                           [safe](int chosen) {
+            if (safe == nullptr) return;
+            if (chosen == 9999) {
+                const juce::StringArray groups2={"1A","1B","2A","2B","3A","3B","4A","4B"};
+                const juce::StringArray names={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+                juce::String copy="ACID303 SOLO V3 - 64 PATTERNS MIDI 36-99\n";
+                for (int slot=0;slot<64;++slot) {
+                    const int midi=36+slot;
+                    copy += groups2[slot/8]+"-"+juce::String(slot%8+1)+"  MIDI "
+                        +juce::String(midi)+" ("+names[midi%12]+juce::String(midi/12)+")\n";
+                }
+                juce::SystemClipboard::copyTextToClipboard(copy);
+            } else if (chosen>=1 && chosen<=64) {
+                safe->processor.setSelectedPattern(chosen-1);
+                safe->timerCallback();
+            }
+        });
+    };
+    addAndMakeVisible(midiPatternMapButton);
+
     modeButton.setColour(juce::TextButton::buttonColourId, blackMetal);
     modeButton.setColour(juce::TextButton::textColourOffId, neonGreen);
     modeButton.setTooltip("Piano Roll : jouez les notes MIDI. Sequenceur : une note MIDI maintenue declenche les 16 pas, note relachee = stop. Tempo FL Studio.");
@@ -351,6 +684,23 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
         timerCallback();
     };
     addAndMakeVisible(modeButton);
+    randomButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff25482d));
+    randomButton.setColour(juce::TextButton::textColourOffId, neonGreen);
+    randomButton.setTooltip("Generer 16 pas en gamme mineure avec silences, slides et accents. Le son et les effets restent identiques.");
+    randomButton.onClick = [this] {
+        processor.randomize16StepPattern();
+        sequenceGrid.repaint();
+    };
+    addAndMakeVisible(randomButton);
+    midiSetupButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff122f2b));
+    midiSetupButton.setColour(juce::TextButton::textColourOffId, neonGreen);
+    midiSetupButton.setTooltip("Affectation MIDI par FL Studio Link (controleurs USB/MIDI).");
+    midiSetupButton.onClick = [this] {
+        juce::CallOutBox::launchAsynchronously(
+            std::make_unique<Acid303MidiSetupPanel>(),
+            midiSetupButton.getBounds(), this);
+    };
+    addAndMakeVisible(midiSetupButton);
     rateLabel.setText("VITESSE", juce::dontSendNotification);
     rateLabel.setColour(juce::Label::textColourId, neonGreen);
     rateLabel.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
@@ -374,8 +724,8 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
         arrow->setColour(juce::TextButton::textColourOffId, neonGreen);
         addAndMakeVisible(*arrow);
     }
-    previousPresetButton.setTooltip("Charger le preset precedent de Documents/Acid303/presets");
-    nextPresetButton.setTooltip("Charger le preset suivant de Documents/Acid303/presets");
+    previousPresetButton.setTooltip("Preset precedent du dernier dossier utilise (sous-dossiers inclus)");
+    nextPresetButton.setTooltip("Preset suivant du dernier dossier utilise (sous-dossiers inclus)");
     previousPresetButton.onClick = [this] { stepUserPreset(-1); };
     nextPresetButton.onClick = [this] { stepUserPreset(1); };
     presetNameLabel.setJustificationType(juce::Justification::centredLeft);
@@ -388,6 +738,17 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
     addAndMakeVisible(skinLabel);
     skinChoice.setTooltip("Choisir un habillage visuel depuis Documents/Acid303/skins");
     addAndMakeVisible(skinChoice);
+    languageChoice.addItem(juce::String("FRAN") + juce::String::charToString((juce_wchar) 0x00C7) + "AIS", 1);
+    languageChoice.addItem("ENGLISH", 2);
+    languageChoice.setSelectedId(static_cast<int>(acid303i18n::current()), juce::dontSendNotification);
+    languageChoice.onChange = [this] {
+        const int lang = languageChoice.getSelectedId();
+        if (lang == 1 || lang == 2) {
+            acid303i18n::select(static_cast<acid303i18n::Language>(lang));
+            applyLanguage();
+        }
+    };
+    addAndMakeVisible(languageChoice);
     for (auto* button : {&savePresetButton, &loadPresetButton, &presetFolderButton}) {
         button->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff05110a));
         button->setColour(juce::TextButton::textColourOffId, neonGreen);
@@ -402,7 +763,7 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
         auto result = Acid303SoloProcessor::preparePresetFolder();
         if (result.failed()) {
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                "Dossier des presets", result.getErrorMessage());
+                tr("Dossier des presets", "Preset folder"), result.getErrorMessage());
         } else {
             Acid303SoloProcessor::getUserPresetFolder().revealToUser();
         }
@@ -426,7 +787,7 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
         const auto result = Acid303SoloProcessor::prepareMidiFolder();
         if (result.failed())
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-                "Dossier MIDI", result.getErrorMessage());
+                tr("Dossier MIDI", "MIDI folder"), result.getErrorMessage());
         else Acid303SoloProcessor::getUserMidiFolder().revealToUser();
     };
     ensureFactorySkinFiles();
@@ -445,10 +806,14 @@ Acid303SoloEditor::Acid303SoloEditor(Acid303SoloProcessor& proc)
     // Components and the artwork use the same 1200x900 reference canvas.
     setResizable(true, true);
     setResizeLimits(900, 675, 1560, 1170);
-    setSize(960, 720);
+    setSize(1152, 720);
     applySkin(getStoredSkinName(processor));
+    applyLanguage();
     checkForUpdates();
-    startTimerHz(8);
+    // Faster visual feedback for MIDI-triggered pattern changes (20 Hz = 50 ms).
+    // The original 8-Hz cadence of background update/skin checks is retained below
+    // by scaling their tick thresholds, without adding audio-thread UI calls.
+    startTimerHz(20);
     timerCallback();
 }
 void Acid303SoloEditor::mouseDown(const juce::MouseEvent& event) {
@@ -458,18 +823,22 @@ void Acid303SoloEditor::mouseDown(const juce::MouseEvent& event) {
         return;
     }
     juce::PopupMenu menu;
-    menu.addItem(1, "Verifier les mises a jour GitHub", true, false);
+    menu.addItem(1, tr("Vérifier les mises à jour GitHub", "Check GitHub updates"), true, false);
     if (updateOffer.newer)
-        menu.addItem(2, "Telecharger v" + updateOffer.version, true, false);
-    menu.addItem(3, "Ouvrir les Releases GitHub", true, false);
+        menu.addItem(2, tr("Télécharger v", "Download v") + updateOffer.version, true, false);
+    menu.addItem(3, tr("Ouvrir les versions GitHub", "Open GitHub Releases"), true, false);
     juce::PopupMenu skins;
     for (int i = 0; i < availableSkinNames.size(); ++i)
         skins.addItem(100+i, availableSkinNames[i], true,
                       availableSkinNames[i] == getStoredSkinName(processor));
-    menu.addSubMenu("Skins", skins);
+    menu.addSubMenu(tr("Thèmes", "Skins"), skins);
+    juce::PopupMenu languages;
+    languages.addItem(201, juce::String("Fran") + juce::String::charToString((juce_wchar) 0x00E7) + "ais", true, acid303i18n::current() == acid303i18n::Language::French);
+    languages.addItem(202, "English", true, acid303i18n::current() == acid303i18n::Language::English);
+    menu.addSubMenu(tr("Langue", "Language"), languages);
     menu.addSeparator();
-    menu.addItem(4, "Preset precedent");
-    menu.addItem(5, "Preset suivant");
+    menu.addItem(4, tr("Preset précédent", "Previous preset"));
+    menu.addItem(5, tr("Preset suivant", "Next preset"));
     const juce::Component::SafePointer<Acid303SoloEditor> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(),
                        [safe](int id) {
@@ -479,6 +848,10 @@ void Acid303SoloEditor::mouseDown(const juce::MouseEvent& event) {
         else if (id == 3) juce::URL("https://github.com/burnouttheory/Acid303-Solo/releases").launchInDefaultBrowser();
         else if (id == 4) safe->stepUserPreset(-1);
         else if (id == 5) safe->stepUserPreset(1);
+        else if (id == 201 || id == 202) {
+            acid303i18n::select(id == 201 ? acid303i18n::Language::French : acid303i18n::Language::English);
+            safe->applyLanguage();
+        }
         else if (id >= 100 && id < 100 + safe->availableSkinNames.size()) {
             const auto name = safe->availableSkinNames[id - 100];
             safe->processor.params.state.setProperty(juce::Identifier("selectedSkinName"), name, nullptr);
@@ -491,6 +864,8 @@ Acid303SoloEditor::~Acid303SoloEditor() {
     updateWorker.signalThreadShouldExit();
     updateWorker.stopThread(6000);
     for (auto& c : controls) if (c.slider) c.slider->setLookAndFeel(nullptr);
+    patternGroupKnob.setLookAndFeel(nullptr);
+    patternNumberKnob.setLookAndFeel(nullptr);
 }
 void Acid303SoloEditor::addControl(const char* id, const char* title) {
     Control c;
@@ -581,12 +956,18 @@ void Acid303SoloEditor::resized() {
     };
     // Same full-featured toolbar as v0.30.2 for EVERY skin, including V1 ORIGINAL.
     // In particular MAJ, SKINS, prev/next and PRESET actions are always visible.
+    // Language beside the tempo and skin selectors, above the synth.
+    languageChoice.setBounds(B(582,18,127,30));
     tempoLabel.setBounds(B(715,18,246,30));
     skinLabel.setBounds(B(964,18,68,30));
     skinChoice.setBounds(B(1038,18,133,30));
-    rateLabel.setBounds(B(309,608,76,28));
-    rateChoice.setBounds(B(389,607,194,28));
+    // Fixed: RANDOM is to the LEFT of the speed selector, not on top of
+    // the sequencer header. These rectangles never overlap.
+    randomButton.setBounds(B(195,607,129,28));
+    rateLabel.setBounds(B(329,608,71,28));
+    rateChoice.setBounds(B(405,607,178,28));
     modeButton.setBounds(B(589,607,267,28));
+    midiSetupButton.setBounds(B(862,607,295,28));
     // Patch selector (left/right buttons) and file operations above OSC / FILTER / ENV / OUTPUT.
     previousPresetButton.setBounds(B(42,79,34,31));
     presetNameLabel.setBounds(B(86,79,355,31));
@@ -596,6 +977,13 @@ void Acid303SoloEditor::resized() {
     presetFolderButton.setBounds(B(776,79,119,31));
     updateButton.setBounds(B(932,79,225,31));
     sequenceGrid.setBounds(B(38,639,1123,221));
+    patternGroupKnob.setBounds(B(1249,259,130,130));
+    patternNumberKnob.setBounds(B(1249,480,130,130));
+    bankTriggerButton.setBounds(B(1225,664,186,34));
+    bankStatusLabel.setBounds(B(1218,703,198,46));
+    transposeLabel.setBounds(B(1218,748,198,18));
+    transposeChoice.setBounds(B(1225,770,186,33));
+    midiPatternMapButton.setBounds(B(1225,818,186,32));
     exportMidiButton.setBounds(B(810,862,100,25));
     importMidiButton.setBounds(B(914,862,100,25));
     midiFolderButton.setBounds(B(1018,862,143,25));
@@ -640,6 +1028,68 @@ void Acid303SoloEditor::paint(juce::Graphics& g) {
     g.fillAll(theme.deep);
     g.addTransform(juce::AffineTransform::scale(float(getWidth()) / virtualWidth,
                                                 float(getHeight()) / virtualHeight));
+    auto paintBankSide = [&] {
+        // V3 UI correction 02: panel and printed dial legends occupy distinct,
+        // non-overlapping rows. Audio, preset serialization and VST3 IDs untouched.
+        const bool grey = theme.name == "TB303 GREY V3";
+        const auto panel = juce::Rectangle<float>(1201.f,68.f,226.f,820.f);
+        const auto ink = accent;
+        const auto subInk = grey ? theme.soft : soft;
+        if (grey) paintBrushedSteel(g,panel);
+        else { g.setColour(theme.body); g.fillRoundedRectangle(panel,8.f); }
+        g.setColour(accent.withAlpha(0.9f));
+        g.drawRoundedRectangle(panel.reduced(1.f),8.f,1.5f);
+
+        g.setColour(ink);
+        g.setFont(juce::Font(juce::FontOptions(19.f).withStyle("Bold")));
+        g.drawText("PATTERN BANK",1214,90,200,29,juce::Justification::centred);
+        g.setColour(accent.withAlpha(0.75f));
+        g.drawLine(1222.f,123.f,1406.f,123.f,1.f);
+
+        // Explicit selection display makes the two knobs easier to understand.
+        const int group=juce::jlimit(0,7,processor.getPatternGroup());
+        const int number=juce::jlimit(0,7,processor.getPatternNumber());
+        const juce::StringArray groupNames={"1A","1B","2A","2B","3A","3B","4A","4B"};
+        const juce::Rectangle<float> selection(1245.f,137.f,138.f,34.f);
+        g.setColour(juce::Colour(0xff202925));
+        g.fillRoundedRectangle(selection,5.f);
+        g.setColour(accent);
+        g.drawRoundedRectangle(selection,5.f,1.f);
+        g.setFont(juce::Font(juce::FontOptions(16.f).withStyle("Bold")));
+        g.drawText(groupNames[group]+"  /  "+juce::String(number+1),
+                   selection,juce::Justification::centred);
+
+        g.setColour(ink);
+        g.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
+        g.drawText("PATTERN GROUP",1216,197,198,22,juce::Justification::centred);
+        g.drawText("PATTERN",1216,418,198,22,juce::Justification::centred);
+
+        // These angles exactly match the JUCE Slider rotary arc (225-495 degrees).
+        // The radius fits the 226-pixel panel and avoids both headings.
+        constexpr float firstDeg=225.f, rangeDeg=270.f;
+        for (int k=0;k<8;++k) {
+            const float angle=juce::degreesToRadians(firstDeg+rangeDeg*float(k)/7.f);
+            const float x=1314.f+86.f*std::sin(angle);
+            const float y=324.f-86.f*std::cos(angle);
+            g.setColour(k==group ? accent : subInk);
+            g.setFont(juce::Font(juce::FontOptions(12.f).withStyle(k==group ? "Bold" : "Regular")));
+            g.drawText(groupNames[k],juce::roundToInt(x)-18,juce::roundToInt(y)-12,
+                       36,24,juce::Justification::centred);
+        }
+        for (int k=0;k<8;++k) {
+            const float angle=juce::degreesToRadians(firstDeg+rangeDeg*float(k)/7.f);
+            const float x=1314.f+86.f*std::sin(angle);
+            const float y=545.f-86.f*std::cos(angle);
+            g.setColour(k==number ? accent : subInk);
+            g.setFont(juce::Font(juce::FontOptions(12.f).withStyle(k==number ? "Bold" : "Regular")));
+            g.drawText(juce::String(k+1),juce::roundToInt(x)-14,juce::roundToInt(y)-12,
+                       28,24,juce::Justification::centred);
+        }
+        g.setColour(ink);
+        g.setFont(juce::Font(juce::FontOptions(11.f).withStyle("Bold")));
+        g.drawText("MIDI 36-99 / 64 PATTERNS",1210,862,211,20,juce::Justification::centred);
+        if (grey) paintPanelScrews(g,panel);
+    };
     if (theme.name == "V1 ORIGINAL") {
         const auto frame = juce::Rectangle<float>(9.0f,8.0f,1182.0f,884.0f);
         g.setColour(juce::Colour(0xff11191d));
@@ -650,11 +1100,16 @@ void Acid303SoloEditor::paint(juce::Graphics& g) {
         g.setFont(juce::Font(juce::FontOptions(29.0f).withStyle("Bold")));
         g.drawText("ACID 303",27,19,240,38,juce::Justification::centredLeft);
         g.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
-        g.drawText("SOLO / VST3 / FL STUDIO",263,25,240,22,juce::Justification::centredLeft);
+        g.drawText("SOLO V3.0.0 / VST3 / FL STUDIO",263,25,307,22,juce::Justification::centredLeft);
+        g.setColour(juce::Colour(0xffa6d8c6));
+        // V3 UI fix 04: brand belongs to the free right-hand header area.
+        // Never paint it underneath FRANCAIS, FL STUDIO BPM or the skin selector.
+        g.drawText("BURNOUT THEORY", 1210, 23, 210, 25,
+                   juce::Justification::centred);
         g.setColour(juce::Colour(0xff080e10));
         g.fillRoundedRectangle(854.0f,16.0f,313.0f,36.0f,4.0f);
         g.setColour(juce::Colour(0xff74e6aa));
-        g.fillEllipse(864.0f,27.0f,10.0f,10.0f);
+        // Removed stray green status dot overlapping the BPM value.
         // Adapt the screenshot palette, NOT its omission of the preset/update toolbar.
         // Keep the same geometry and all interactive controls as the v0.30.2 UI.
         g.setColour(juce::Colour(0xff182228));
@@ -670,31 +1125,43 @@ void Acid303SoloEditor::paint(juce::Graphics& g) {
         g.fillRoundedRectangle(juce::Rectangle<float>(917,74,245,42),5.0f);
         g.setColour(juce::Colour(0xff566a74));
         g.drawRoundedRectangle(juce::Rectangle<float>(917,74,245,42),5.0f,1.0f);
-        panel(g,{35,126,333,246},"OSCILLATOR","WAVE / SHAPE / TUNE",false,theme);
-        panel(g,{377,126,347,246},"FILTER","CUTOFF / RESO / LFO",false,theme);
-        panel(g,{733,126,264,246},"ENVELOPE","SLIDE / ACCENT",false,theme);
-        panel(g,{1006,126,160,246},"OUTPUT","MASTER",false,theme);
-        panel(g,{23,391,331,198},"COMPRESSOR","3-BAND",true,theme);
-        panel(g,{362,391,267,198},"DISTORTION","TUBE / BITCRUSHER",true,theme);
-        panel(g,{637,391,255,198},"DELAY","STEREO / SYNC BPM",true,theme);
-        panel(g,{900,391,277,198},"REVERB","STEREO",true,theme);
-        panel(g,{23,600,1154,288},"16-STEP SEQUENCER","",false,theme);
+        panel(g,{35,126,333,246},tr("OSCILLATEUR", "OSCILLATOR"),"WAVE / SHAPE / TUNE",false,theme);
+        panel(g,{377,126,347,246},tr("FILTRE", "FILTER"),"CUTOFF / RESO / LFO",false,theme);
+        panel(g,{733,126,264,246},tr("ENVELOPPE", "ENVELOPE"),"SLIDE / ACCENT",false,theme);
+        panel(g,{1006,126,160,246},tr("SORTIE", "OUTPUT"),"MASTER",false,theme);
+        panel(g,{23,391,331,198},tr("COMPRESSEUR", "COMPRESSOR"),"3-BAND",true,theme);
+        panel(g,{362,391,267,198},tr("DISTORSION", "DISTORTION"),"TUBE / BITCRUSHER",true,theme);
+        panel(g,{637,391,255,198},tr("DELAY", "DELAY"),"STEREO / SYNC BPM",true,theme);
+        panel(g,{900,391,277,198},tr("REVERB", "REVERB"),"STEREO",true,theme);
+        panel(g,{23,600,1154,288},tr("SÉQUENCEUR", "SEQUENCER"),"",false,theme);
         g.setColour(juce::Colours::white);
         g.setFont(juce::Font(juce::FontOptions(11.5f).withStyle("Bold")));
-        g.drawText("MIDI : velocite = accent | chevauchement = slide | import/export dans Documents/Acid303/midi",
+        g.drawText(tr("MIDI : vélocité = accent | chevauchement = slide | import/export : Documents/Acid303/midi",
+                      "MIDI: velocity = accent | overlap = slide | import/export: Documents/Acid303/midi"),
                    47,866,752,16,juce::Justification::centredLeft);
+        paintBankSide();
         return;
     }
     auto full = juce::Rectangle<float>(8.0f,8.0f,1184.0f,884.0f);
-    g.setColour(theme.body);
-    g.fillRoundedRectangle(full,8.0f);
-    drawCrackTexture(g, full.reduced(4.0f), theme);
+    if (theme.name == "TB303 GREY V3") {
+        paintBrushedSteel(g,full);
+        paintPanelScrews(g,full);
+    } else {
+        g.setColour(theme.body);
+        g.fillRoundedRectangle(full,8.0f);
+        drawCrackTexture(g, full.reduced(4.0f), theme);
+    }
     g.setColour(accent.withAlpha(0.9f));
     g.drawRoundedRectangle(full.reduced(0.8f),8.0f,1.6f);
 
     g.setColour(accent);
     g.setFont(juce::Font(juce::FontOptions(30.0f).withStyle("Bold")));
-    g.drawText("ACID 303",25,17,250,37,juce::Justification::centredLeft);
+    g.drawText("ACID 303 V3.0.0",25,17,350,37,juce::Justification::centredLeft);
+    g.setFont(juce::Font(juce::FontOptions(13.0f).withStyle("Bold")));
+    // V3 UI fix 04: keep the brand in the unused header above PATTERN BANK.
+    // Header controls extend through x=1171; the side header starts at x=1201.
+    g.drawText("BURNOUT THEORY", 1210, 23, 210, 25,
+               juce::Justification::centred);
 
 
     g.setColour(juce::Colours::black.withAlpha(0.5f));
@@ -710,21 +1177,23 @@ void Acid303SoloEditor::paint(juce::Graphics& g) {
     g.drawRoundedRectangle(presetBar, 5.0f, 1.1f);
     g.setColour(accent.withAlpha(0.08f));
     g.fillRoundedRectangle(presetBar.reduced(1.5f), 4.0f);
-    panel(g,{35,126,333,246},"OSCILLATOR","WAVE / SHAPE / TUNE",false,theme);
-    panel(g,{377,126,347,246},"FILTER","CUTOFF / RESO / LFO",false,theme);
-    panel(g,{733,126,264,246},"ENVELOPE","SLIDE / ACCENT",false,theme);
-    panel(g,{1006,126,160,246},"OUTPUT","MASTER",false,theme);
+    panel(g,{35,126,333,246},tr("OSCILLATEUR", "OSCILLATOR"),"WAVE / SHAPE / TUNE",false,theme);
+    panel(g,{377,126,347,246},tr("FILTRE", "FILTER"),"CUTOFF / RESO / LFO",false,theme);
+    panel(g,{733,126,264,246},tr("ENVELOPPE", "ENVELOPE"),"SLIDE / ACCENT",false,theme);
+    panel(g,{1006,126,160,246},tr("SORTIE", "OUTPUT"),"MASTER",false,theme);
 
-    panel(g,{23,391,331,198},"COMPRESSOR","3-BAND",true,theme);
-    panel(g,{362,391,267,198},"DISTORTION","TUBE / BITCRUSHER",true,theme);
-    panel(g,{637,391,255,198},"DELAY","STEREO / SYNC BPM",true,theme);
-    panel(g,{900,391,277,198},"REVERB","STEREO",true,theme);
+    panel(g,{23,391,331,198},tr("COMPRESSEUR", "COMPRESSOR"),"3-BAND",true,theme);
+    panel(g,{362,391,267,198},tr("DISTORSION", "DISTORTION"),"TUBE / BITCRUSHER",true,theme);
+    panel(g,{637,391,255,198},tr("DELAY", "DELAY"),"STEREO / SYNC BPM",true,theme);
+    panel(g,{900,391,277,198},tr("REVERB", "REVERB"),"STEREO",true,theme);
 
-    panel(g,{23,600,1154,288},"16-STEP SEQUENCER","",false,theme);
+    panel(g,{23,600,1154,288},tr("SÉQUENCEUR", "SEQUENCER"),"",false,theme);
     g.setColour(soft);
     g.setFont(juce::Font(juce::FontOptions(12.5f).withStyle("Bold")));
-    g.drawText("MIDI : velocite = accent | chevauchement = slide | import/export dans Documents/Acid303/midi", 
+    g.drawText(tr("MIDI : vélocité = accent | chevauchement = slide | import/export : Documents/Acid303/midi",
+                      "MIDI: velocity = accent | overlap = slide | import/export: Documents/Acid303/midi"), 
                47,866,752,16,juce::Justification::centredLeft);
+    paintBankSide();
 }
 
 void Acid303SoloEditor::applySkin(const juce::String& skinName) {
@@ -749,21 +1218,43 @@ void Acid303SoloEditor::applySkin(const juce::String& skinName) {
         label->setColour(juce::Label::textColourId, accent);
     delaySubdivision.setColour(juce::Label::textColourId, reference ? juce::Colours::white : soft);
     tempoLabel.setColour(juce::Label::textColourId, accent);
+    transposeLabel.setColour(juce::Label::textColourId, accent);
+    bankStatusLabel.setColour(juce::Label::textColourId, accent);
     distTypeName.setColour(juce::Label::backgroundColourId, theme.panel);
-    for (auto* choice : {&rateChoice, &skinChoice, &delayModeChoice}) {
+    for (auto* choice : {&rateChoice, &skinChoice, &delayModeChoice, &languageChoice, &transposeChoice}) {
         choice->setColour(juce::ComboBox::backgroundColourId, theme.panel);
         choice->setColour(juce::ComboBox::textColourId, reference ? juce::Colours::white : accent);
         choice->setColour(juce::ComboBox::outlineColourId,
                           reference ? juce::Colour(0xff687c82) : accent);
         choice->setColour(juce::ComboBox::arrowColourId, reference ? juce::Colours::white : accent);
     }
-    for (auto* button : {&modeButton, &previousPresetButton, &nextPresetButton,
+    for (auto* button : {&modeButton, &randomButton, &midiSetupButton, &midiPatternMapButton,
+                         &previousPresetButton, &nextPresetButton,
                          &savePresetButton, &loadPresetButton,
                          &presetFolderButton, &updateButton, &exportMidiButton, &importMidiButton,
                          &midiFolderButton, &prevDistType, &nextDistType}) {
         button->setColour(juce::TextButton::buttonColourId, theme.panel);
         button->setColour(juce::TextButton::textColourOffId, reference ? juce::Colours::white : accent);
     }
+    if (theme.name != "TB303 GREY V3") {
+        randomButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff25482d));
+        randomButton.setColour(juce::TextButton::textColourOffId, neonGreen);
+        midiSetupButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff122f2b));
+        midiSetupButton.setColour(juce::TextButton::textColourOffId, neonGreen);
+    }
+    if (theme.name == "TB303 GREY V3") {
+        // Same dark fill as MODE: PIANO ROLL, instead of the historical green fills.
+        for (auto* button : {&modeButton, &randomButton, &midiSetupButton}) {
+            button->setColour(juce::TextButton::buttonColourId, theme.panel);
+            button->setColour(juce::TextButton::buttonOnColourId, theme.panel);
+            button->setColour(juce::TextButton::textColourOffId, theme.accent);
+            button->setColour(juce::TextButton::textColourOnId, theme.accent);
+        }
+    }
+    bankTriggerButton.setColour(juce::TextButton::buttonColourId, theme.panel);
+    bankTriggerButton.setColour(juce::TextButton::textColourOffId, accent);
+    bankStatusLabel.setColour(juce::Label::textColourId,
+                              accent);
     // Preserve EVERY v0.30.2 control as a visible, direct-action widget.
     // No V1 skin is allowed to hide preset navigation, skin selection or GitHub MAJ.
     for (auto* button : {&previousPresetButton, &nextPresetButton, &savePresetButton,
@@ -772,6 +1263,7 @@ void Acid303SoloEditor::applySkin(const juce::String& skinName) {
     presetNameLabel.setVisible(true);
     skinLabel.setVisible(true);
     skinChoice.setVisible(true);
+    languageChoice.setVisible(true);
     if (reference) {
         modeButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffffc166));
         distTypeName.setColour(juce::Label::textColourId, juce::Colour(0xffffc166));
@@ -792,24 +1284,82 @@ void Acid303SoloEditor::applySkin(const juce::String& skinName) {
     repaint();
 }
 
+
+// UI-only language: no modifications to the synth's automatable parameter IDs.
+// The global user preference is shared by all Acid303 Solo instances.
+void Acid303SoloEditor::applyLanguage() {
+    lastLanguageId = static_cast<int>(acid303i18n::current());
+    languageChoice.setSelectedId(lastLanguageId, juce::dontSendNotification);
+    languageChoice.setTooltip(tr("Langue de l'interface (préférence utilisateur)",
+                                 "Interface language (user preference)"));
+    skinLabel.setText(tr("THÈMES", "SKINS"), juce::dontSendNotification);
+    skinChoice.setTooltip(tr("Choisir un thème dans Documents/Acid303/skins",
+                             "Choose a theme from Documents/Acid303/skins"));
+    rateLabel.setText(tr("VITESSE", "SPEED"), juce::dontSendNotification);
+    const int selectedRate = juce::jlimit(1, 4, rateChoice.getSelectedId());
+    rateChoice.clear(juce::dontSendNotification);
+    rateChoice.addItem(tr("NOIRE (1/4)", "QUARTER (1/4)"), 1);
+    rateChoice.addItem(tr("CROCHE (1/8)", "EIGHTH (1/8)"), 2);
+    rateChoice.addItem(tr("1/16 · DBL CROCHE", "SIXTEENTH (1/16)"), 3);
+    rateChoice.addItem(tr("1/32 · TRPL CROCHE", "32ND NOTE (1/32)"), 4);
+    rateChoice.setSelectedId(selectedRate, juce::dontSendNotification);
+    rateChoice.setTooltip(tr("Durée de chaque pas, synchronisée avec FL Studio.",
+                             "Step rate, synchronized with FL Studio."));
+    randomButton.setButtonText(tr("ALÉATOIRE 16", "RANDOM 16"));
+    randomButton.setTooltip(tr("Générer 16 pas avec notes, silences, slides et accents. Les sons et effets sont conservés.",
+                               "Generate 16 steps with notes, rests, slides and accents. Sound and effects stay unchanged."));
+    midiSetupButton.setButtonText(tr("CONFIG MIDI", "MIDI SETUP"));
+    transposeLabel.setText(tr("TRANSPOSITION", "TRANSPOSE"), juce::dontSendNotification);
+    midiPatternMapButton.setButtonText(tr("CARTE MIDI 64", "MIDI MAP 64"));
+    midiSetupButton.setTooltip(tr("Affectation MIDI via FL Studio Link.",
+                                  "MIDI mapping via FL Studio Link."));
+    savePresetButton.setButtonText(tr("SAUVER PRESET", "SAVE PRESET"));
+    loadPresetButton.setButtonText(tr("CHARGER PRESET", "LOAD PRESET"));
+    presetFolderButton.setButtonText(tr("DOSSIER", "FOLDER"));
+    exportMidiButton.setButtonText(tr("EXPORT MIDI", "EXPORT MIDI"));
+    importMidiButton.setButtonText(tr("IMPORT MIDI", "IMPORT MIDI"));
+    midiFolderButton.setButtonText(tr("DOSSIER MIDI", "MIDI FOLDER"));
+    savePresetButton.setTooltip(tr("Enregistrer le son, la transposition et les 64 patterns dans un preset.",
+                                   "Save sound settings, transpose and all 64 patterns to a preset."));
+    loadPresetButton.setTooltip(tr("Charger un preset Acid303.", "Load an Acid303 preset."));
+    presetFolderButton.setTooltip(tr("Ouvrir le dossier des presets.", "Open the presets folder."));
+    modeButton.setTooltip(tr("Piano Roll : jouer depuis le clavier MIDI. Séquenceur : maintenir une note pour déclencher le motif.",
+                             "Piano Roll: play via MIDI notes. Sequencer: hold a note to run the pattern."));
+    updateButton.setTooltip(tr("Rechercher une nouvelle version sur GitHub.", "Check GitHub for updates."));
+    prevDistType.setTooltip(tr("Effet de distorsion précédent.", "Previous distortion type."));
+    nextDistType.setTooltip(tr("Effet de distorsion suivant.", "Next distortion type."));
+    delayModeChoice.setTooltip(tr("NORMAL : écho standard ; PING-PONG : alternance gauche/droite.",
+                                  "NORMAL: regular echoes; PING-PONG: alternating left/right."));
+    // Most short synth labels (CUTOFF, WAVE, RESO, DRY/WET...) are universal
+    // conventions. Only language-specific labels change, not param IDs.
+    controls[6].label->setText(tr("VIT. LFO", "LFO RATE"), juce::dontSendNotification);
+    controls[11].label->setText(tr("VOL. GÉNÉRAL", "MASTER VOL."), juce::dontSendNotification);
+    controls[8].label->setText(tr("GLISSEMENT", "SLIDE TIME"), juce::dontSendNotification);
+    controls[18].label->setText(tr("VOLUME", "VOLUME"), juce::dontSendNotification);
+    displayUpdateStatus();
+    sequenceGrid.repaint();
+    repaint();
+}
+
 void Acid303SoloEditor::timerCallback() {
     acid303update::Offer checked;
     if (updateWorker.takeResult(checked)) {
         updateOffer = checked;
         displayUpdateStatus();
     }
-    if (++updateCheckTicks >= 8 * 3600) { updateCheckTicks = 0; checkForUpdates(); }
+    if (++updateCheckTicks >= 20 * 3600) { updateCheckTicks = 0; checkForUpdates(); }
     // Look for newly copied or removed external .acid303skin files every 2s.
     // Do not interrupt the user while the dropdown menu is open.
-    if (++skinScanTicks >= 16) {
+    if (++skinScanTicks >= 40) {
         skinScanTicks = 0;
         if (!skinChoice.isPopupActive()) refreshSkinChoices();
     }
+    if (lastLanguageId != static_cast<int>(acid303i18n::current())) applyLanguage();
     const auto selectedSkin = getStoredSkinName(processor);
     if (activeSkinName != selectedSkin) applySkin(selectedSkin);
     if (availableSkinNames.indexOf(selectedSkin) >= 0 && skinChoice.getSelectedItemIndex() != availableSkinNames.indexOf(selectedSkin))
         skinChoice.setSelectedItemIndex(availableSkinNames.indexOf(selectedSkin), juce::dontSendNotification);
-    const auto shown = "PRESET : " + processor.getCurrentPresetName();
+    const auto shown = tr("PRESET : ", "PRESET: ") + processor.getCurrentPresetName();
     if (presetNameLabel.getText() != shown)
         presetNameLabel.setText(shown, juce::dontSendNotification);
     const float bpm=processor.hostBpm.load(std::memory_order_relaxed);
@@ -828,7 +1378,42 @@ void Acid303SoloEditor::timerCallback() {
     distTypeName.setText(typeNames[static_cast<size_t>(selected)], juce::dontSendNotification);
     for (auto& effect : effectButtons)
         effect.button->setButtonText(effect.button->getToggleState() ? "ON" : "OFF");
-    modeButton.setButtonText(processor.getPlayMode() == 0 ? "MODE : PIANO ROLL" : (processor.currentSequenceStep.load(std::memory_order_relaxed) < 0 ? "SEQUENCEUR : ATTENTE MIDI" : "SEQUENCEUR : ACTIF"));
+    modeButton.setButtonText(processor.getPlayMode() == 0
+        ? tr("MODE : PIANO ROLL", "MODE: PIANO ROLL")
+        : (processor.currentSequenceStep.load(std::memory_order_relaxed) < 0
+            ? tr("SÉQUENCEUR : ATTENTE MIDI", "SEQUENCER: WAITING FOR MIDI")
+            : tr("SÉQUENCEUR : ACTIF", "SEQUENCER: ACTIVE")));
+    // MIDI BANKS playback chooses a pattern on the audio thread and publishes
+    // its slot through an atomic. Only the JUCE MESSAGE THREAD may change the
+    // editing selection and its host-notified seqLength parameter. Never call
+    // setSelectedPattern or mutate UI directly from processBlock().
+    const int playing=processor.currentPlaybackPattern.load(std::memory_order_acquire);
+    const bool followMidiPattern = processor.getBankTriggerEnabled() && processor.getPlayMode() == 1;
+    bool selectionChanged = false;
+    if (followMidiPattern && playing >= 0 && playing < Acid303SoloProcessor::kPatternCount
+        && playing != processor.getSelectedPattern()) {
+        processor.setSelectedPattern(playing);
+        selectionChanged = true;
+    }
+    // Keep the most recently triggered pattern visible after MIDI Note Off.
+    // With MIDI BANKS OFF, the two knobs still follow the manual edit selection.
+    const int displayedGroup = processor.getPatternGroup();
+    const int displayedNumber = processor.getPatternNumber();
+    if (juce::roundToInt(patternGroupKnob.getValue()) != displayedGroup) {
+        patternGroupKnob.setValue(displayedGroup,juce::dontSendNotification);
+        selectionChanged = true;
+    }
+    if (juce::roundToInt(patternNumberKnob.getValue()) != displayedNumber) {
+        patternNumberKnob.setValue(displayedNumber,juce::dontSendNotification);
+        selectionChanged = true;
+    }
+    if (selectionChanged)
+        repaint(); // The selection rectangle in paintBankSide is not a child Label.
+    bankTriggerButton.setButtonText(processor.getBankTriggerEnabled() ? "MIDI BANKS : ON" : "MIDI BANKS : OFF");
+    const int selectedPattern=processor.getSelectedPattern();
+    bankStatusLabel.setText("EDIT: "+juce::String(selectedPattern/16+1)+
+        ((selectedPattern/8)%2==0 ? "A" : "B")+" / "+juce::String(selectedPattern%8+1)+
+        " | MIDI " + (playing>=0 ? juce::String(playing+36) : "--"),juce::dontSendNotification);
     sequenceGrid.repaint();
 }
 
@@ -878,17 +1463,17 @@ void Acid303SoloEditor::checkForUpdates() {
 
 void Acid303SoloEditor::displayUpdateStatus() {
     if (!updateOffer.configured) {
-        updateButton.setButtonText("MAJ : NON CONFIGUREE");
-        updateButton.setTooltip("L'editeur doit configurer l'URL publique du fichier latest.json.");
+        updateButton.setButtonText(tr("MAJ : NON CONFIGURÉE", "UPDATE: NOT CONFIGURED"));
+        updateButton.setTooltip(tr("L’éditeur doit configurer l’URL de latest.json.", "Publisher must configure the latest.json URL."));
     } else if (!updateOffer.valid) {
-        updateButton.setButtonText("MAJ : HORS LIGNE");
-        updateButton.setTooltip(updateOffer.error + "\nCliquez pour relancer la verification.");
+        updateButton.setButtonText(tr("MAJ : HORS LIGNE", "UPDATE: OFFLINE"));
+        updateButton.setTooltip(updateOffer.error + tr("\nCliquez pour réessayer.", "\nClick to retry."));
     } else if (updateOffer.newer) {
-        updateButton.setButtonText("MAJ : v" + updateOffer.version + " DISPONIBLE");
-        updateButton.setTooltip(updateOffer.notes + "\nCliquez pour ouvrir la page des Releases GitHub.");
+        updateButton.setButtonText(tr("MAJ : v", "UPDATE: v") + updateOffer.version + tr(" DISPONIBLE", " AVAILABLE"));
+        updateButton.setTooltip(updateOffer.notes + tr("\nCliquez pour ouvrir GitHub Releases.", "\nClick to open GitHub Releases."));
     } else {
-        updateButton.setButtonText("A JOUR : v" + acid303update::installedVersion());
-        updateButton.setTooltip("Version installee a jour. Cliquez pour rechercher une nouvelle version.");
+        updateButton.setButtonText(tr("À JOUR : v", "UP TO DATE: v") + acid303update::installedVersion());
+        updateButton.setTooltip(tr("Version à jour. Cliquez pour rechercher des nouveautés.", "Version is current. Click to check for updates."));
     }
     updateButton.setColour(juce::TextButton::buttonColourId,
                            updateOffer.newer ? juce::Colour(0xff5d2512) : juce::Colour(0xff06110a));
@@ -901,20 +1486,20 @@ void Acid303SoloEditor::handleUpdateClick() {
         juce::URL(updateOffer.downloadUrl).launchInDefaultBrowser();
         return;
     }
-    updateButton.setButtonText("MAJ : VERIFICATION...");
+    updateButton.setButtonText(tr("MAJ : VÉRIFICATION...", "CHECKING UPDATE..."));
     checkForUpdates();
 }
 
 void Acid303SoloEditor::chooseMidiFile(bool saving) {
     if (auto result = Acid303SoloProcessor::prepareMidiFolder(); result.failed()) {
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-            "Dossier MIDI", result.getErrorMessage());
+            tr("Dossier MIDI", "MIDI folder"), result.getErrorMessage());
         return;
     }
     const auto folder = Acid303SoloProcessor::getUserMidiFolder();
     const auto suggested = saving ? folder.getChildFile("Ma sequence.mid") : folder;
     midiChooser = std::make_unique<juce::FileChooser>(
-        saving ? "Exporter une sequence MIDI Acid303" : "Importer une sequence MIDI",
+        saving ? tr("Exporter une séquence MIDI Acid303", "Export Acid303 MIDI sequence") : tr("Importer une séquence MIDI", "Import MIDI sequence"),
         suggested, saving ? "*.mid" : "*.mid;*.midi", true);
     const int midiFileFlags = juce::FileBrowserComponent::canSelectFiles
         | (saving ? juce::FileBrowserComponent::saveMode
@@ -933,8 +1518,9 @@ void Acid303SoloEditor::chooseMidiFile(bool saving) {
         } else if (!saving) {
             safe->sequenceGrid.repaint();
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
-                "MIDI importe", "Les 16 pas du sequenceur ont ete actualises.\n"
-                "Les fichiers MIDI externes peuvent perdre les informations propres a Acid303.");
+                tr("MIDI importé", "MIDI imported"),
+                tr("Les 16 pas ont été actualisés.\nUn MIDI externe peut perdre des données propres à Acid303.",
+                   "The 16 steps were updated.\nExternal MIDI files may omit Acid303-specific information."));
         }
     });
 }
@@ -944,68 +1530,97 @@ void Acid303SoloEditor::chooseMidiFile(bool saving) {
 void Acid303SoloEditor::stepDistType(int delta) {
     auto* parameter = processor.params.getParameter("distType");
     if (parameter == nullptr) return;
-    const int current = juce::jlimit(0, 1, static_cast<int>(
+    const int current = juce::jlimit(0,1,static_cast<int>(
         processor.params.getRawParameterValue("distType")->load(std::memory_order_relaxed) + 0.5f));
-    const int next = (current + delta + 2) % 2;
+    const int next = (current + delta % 2 + 2) % 2;
     parameter->beginChangeGesture();
     parameter->setValueNotifyingHost(parameter->convertTo0to1(static_cast<float>(next)));
     parameter->endChangeGesture();
     timerCallback();
 }
 
-
 void Acid303SoloEditor::stepUserPreset(int direction) {
-    const auto result = Acid303SoloProcessor::preparePresetFolder();
-    if (result.failed()) {
+    if (auto result = Acid303SoloProcessor::preparePresetFolder(); result.failed()) {
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
             "Presets", result.getErrorMessage());
         return;
     }
-    const auto discovered = Acid303SoloProcessor::getUserPresetFolder().findChildFiles(
-        juce::File::findFiles, false, "*.acid303preset");
-    std::vector<juce::File> files;
-    for (const auto& file : discovered) files.push_back(file);
-    std::sort(files.begin(), files.end(), [](const juce::File& a, const juce::File& b) {
-        return a.getFileNameWithoutExtension().compareIgnoreCase(b.getFileNameWithoutExtension()) < 0;
-    });
+
+    // Navigate the current preset's directory when one was opened/saved in
+    // this editor, otherwise use the last user-wide directory. Recursion lets
+    // the arrows work from presets/ itself and from Factory/ or User/ without
+    // requiring the user to move presets into the root directory.
+    const auto root = Acid303SoloProcessor::getUserPresetFolder();
+    auto folder = lastSelectedPreset.existsAsFile()
+        ? lastSelectedPreset.getParentDirectory() : getLastPresetDirectory();
+    if (!folder.isDirectory()) folder = root;
+
+    auto collect = [](const juce::File& directory) {
+        std::vector<juce::File> result;
+        for (const auto& file : directory.findChildFiles(
+                 juce::File::findFiles, true, "*.acid303preset"))
+            result.push_back(file);
+        // A deterministic order, even if two different subfolders contain
+        // presets with the same name. No repeated or skipped files.
+        std::sort(result.begin(), result.end(), [&directory](const juce::File& a,
+                                                             const juce::File& b) {
+            return a.getRelativePathFrom(directory).compareIgnoreCase(
+                       b.getRelativePathFrom(directory)) < 0;
+        });
+        return result;
+    };
+    auto files = collect(folder);
+    if (files.empty() && folder != root) {
+        folder = root;
+        files = collect(root);
+    }
     if (files.empty()) {
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon, "Presets",
-            "Aucun preset dans Documents/Acid303/presets.\n"
-            "Enregistrez d'abord un son avec SAVE PRESET.");
+            tr("Aucun fichier .acid303preset dans ce dossier ni ses sous-dossiers.",
+               "No .acid303preset files in this folder or its subfolders."));
         return;
     }
-    const auto current = processor.getCurrentPresetName();
+
     int currentIndex = -1;
-    for (int i = 0; i < static_cast<int>(files.size()); ++i) {
-        if (files[static_cast<size_t>(i)].getFileNameWithoutExtension().equalsIgnoreCase(current)) {
-            currentIndex = i;
-            break;
-        }
+    // Exact file path takes precedence over display name: two categories can
+    // contain presets with identical file names.
+    if (lastSelectedPreset.existsAsFile()) {
+        for (int i = 0; i < static_cast<int>(files.size()); ++i)
+            if (files[static_cast<size_t>(i)] == lastSelectedPreset) {
+                currentIndex = i;
+                break;
+            }
     }
-    const int n = static_cast<int>(files.size());
-    const int chosen = currentIndex < 0 ? (direction > 0 ? 0 : n - 1)
-                                        : (currentIndex + (direction > 0 ? 1 : -1) + n) % n;
-    const auto chosenFile = files[static_cast<size_t>(chosen)];
-    if (auto loadResult = processor.loadPresetFromFile(chosenFile); loadResult.failed()) {
+    if (currentIndex < 0) {
+        const auto name = processor.getCurrentPresetName();
+        for (int i = 0; i < static_cast<int>(files.size()); ++i)
+            if (files[static_cast<size_t>(i)].getFileNameWithoutExtension().equalsIgnoreCase(name)) {
+                currentIndex = i;
+                break;
+            }
+    }
+    const auto n = static_cast<int>(files.size());
+    const auto chosenIndex = currentIndex < 0 ? (direction > 0 ? 0 : n - 1)
+        : (currentIndex + (direction > 0 ? 1 : -1) + n) % n;
+    const auto chosenFile = files[static_cast<size_t>(chosenIndex)];
+    if (auto result = processor.loadPresetFromFile(chosenFile); result.failed()) {
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-            "Preset Acid303", loadResult.getErrorMessage());
-    } else {
-        timerCallback();
-        repaint();
+            "Preset Acid303", result.getErrorMessage());
+        return;
     }
+    lastSelectedPreset = chosenFile;
+    rememberLastPresetDirectory(chosenFile.getParentDirectory());
+    timerCallback();
+    repaint();
 }
 
 void Acid303SoloEditor::choosePresetFile(bool saving) {
-    auto folder = Acid303SoloProcessor::getDefaultPresetFolder();
     if (auto result = Acid303SoloProcessor::preparePresetFolder(); result.failed()) {
         juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
-            "Dossier des presets", result.getErrorMessage());
+            tr("Dossier des presets", "Preset folder"), result.getErrorMessage());
         return;
     }
-    // When saving edits to a loaded preset, propose its current name rather
-    // than the generic "Mon preset" filename. The native Save dialog remains
-    // editable, and warnAboutOverwriting requests confirmation before replacing
-    // an existing preset. The user can also type a new name to keep both.
+    const auto folder = getLastPresetDirectory();
     juce::File suggested = folder;
     if (saving) {
         auto currentName = processor.getCurrentPresetName().trim();
@@ -1013,32 +1628,41 @@ void Acid303SoloEditor::choosePresetFile(bool saving) {
             currentName = "Mon preset";
         const auto legalName = juce::File::createLegalFileName(currentName);
         suggested = folder.getChildFile((legalName.isNotEmpty() ? legalName : juce::String("Mon preset"))
-                                         + ".acid303preset");
+                                        + ".acid303preset");
     }
+    // Native Windows dialog is retained for both Open and Save As.
     presetChooser = std::make_unique<juce::FileChooser>(
-        saving ? "Enregistrer un preset Acid303" : "Charger un preset Acid303",
+        saving ? tr("Enregistrer un preset Acid303", "Save Acid303 preset")
+               : tr("Charger un preset Acid303", "Load Acid303 preset"),
         suggested, "*.acid303preset", true);
-    const auto presetFileFlags = saving
-        ? (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting)
+    const auto flags = saving
+        ? (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+           | juce::FileBrowserComponent::warnAboutOverwriting)
         : (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles);
     juce::Component::SafePointer<Acid303SoloEditor> safe(this);
-    presetChooser->launchAsync(presetFileFlags, [safe,saving](const juce::FileChooser& chooser) {
+    presetChooser->launchAsync(flags, [safe, saving](const juce::FileChooser& chooser) {
         if (safe == nullptr) return;
         const auto selected = chooser.getResult();
-        if (selected == juce::File()) return;
+        if (selected == juce::File()) return; // Cancel: no folder update.
+        const auto actualFile = selected.hasFileExtension(".acid303preset")
+            ? selected : selected.withFileExtension(".acid303preset");
         const auto result = saving
-            ? safe->processor.savePresetToFile(selected)
-            : safe->processor.loadPresetFromFile(selected);
-        if (result.failed())
+            ? safe->processor.savePresetToFile(actualFile)
+            : safe->processor.loadPresetFromFile(actualFile);
+        if (result.failed()) {
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
                 "Preset Acid303", result.getErrorMessage());
-        else if (saving) {
-            const auto savedFile = selected.hasFileExtension(".acid303preset")
-                ? selected : selected.withFileExtension(".acid303preset");
+            return; // An invalid load must not change the remembered folder.
+        }
+        safe->lastSelectedPreset = actualFile;
+        rememberLastPresetDirectory(actualFile.getParentDirectory());
+        if (saving) {
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::InfoIcon,
-                "Preset enregistre", "Preset sauvegarde dans :\n" + savedFile.getFullPathName());
+                tr("Preset enregistré", "Preset saved"),
+                tr("Preset sauvegardé dans :\n", "Preset saved to:\n") + actualFile.getFullPathName());
         } else {
             safe->timerCallback();
+            safe->repaint();
         }
     });
 }
@@ -1070,7 +1694,9 @@ void Acid303SequenceGrid::paint(juce::Graphics& g) {
         ? processor.currentSequenceStep.load(std::memory_order_relaxed) : -1;
     // Display order is reversed compared with the original grid.
     // Model data and audio behavior are unchanged.
-    const std::array<juce::String,4> rows = {"ACCENT", "SLIDE", "NOTE", "ON / OFF"};
+    const std::array<juce::String,4> rows = {
+        "ACCENT", "SLIDE", "NOTE", tr("ON / OFF", "ON / OFF")
+    };
 
     // Step numbers and a selectable LED per column choose the LOOP LENGTH.
     // The first pad at the left is step 1, and numbering grows to step 16
@@ -1080,7 +1706,7 @@ void Acid303SequenceGrid::paint(juce::Graphics& g) {
                            1123.0f, float(headerHeight)), 3.0f);
     g.setColour(reference ? juce::Colours::white : accent);
     g.setFont(juce::Font(juce::FontOptions(14.0f).withStyle("Bold")));
-    g.drawText("BOUCLE", 10, 1, labelWidth-20, 19, juce::Justification::centredLeft);
+    g.drawText(tr("BOUCLE", "LOOP"), 10, 1, labelWidth-20, 19, juce::Justification::centredLeft);
     g.setColour(reference ? juce::Colour(0xffffc063) : soft);
     g.drawText(juce::String(processor.getSequenceLength()) + " / 16", 10, 19, labelWidth-20, 20,
                juce::Justification::centredLeft);

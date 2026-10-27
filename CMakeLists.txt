@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Acid303Solo VERSION 0.30.3 LANGUAGES CXX)
+project(Acid303Solo VERSION 3.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -12,7 +12,7 @@ FetchContent_Declare(JUCE
 FetchContent_MakeAvailable(JUCE)
 
 juce_add_plugin(Acid303Solo
-    COMPANY_NAME "Acid303 Independent"
+    COMPANY_NAME "Burnout Theory"
     BUNDLE_ID "info.acid303.solo"
     PLUGIN_MANUFACTURER_CODE Ac03
     PLUGIN_CODE A303
@@ -44,3 +44,12 @@ target_link_libraries(Acid303Solo PRIVATE
 
 # Personal presets are stored in the OS-resolved Documents/Acid303/presets
 # directory, not bundled inside the VST3 under protected Program Files.
+
+# Preserve accented French/English UI text when compiling with MSVC.
+if(MSVC)
+    target_compile_options(Acid303Solo PRIVATE /utf-8)
+endif()
+
+# V3 official UPGRADE intentionally reuses the v2.0.6 VST3 identity for FL Studio project recall.
+juce_add_binary_data(Acid303UpgradeKnobs SOURCES Assets/TB303_Knob.png)
+target_link_libraries(Acid303Solo PRIVATE Acid303UpgradeKnobs)

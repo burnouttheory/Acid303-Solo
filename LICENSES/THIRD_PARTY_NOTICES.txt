@@ -1,0 +1,26 @@
+ACID303 SOLO V3.0.0 TEST — THIRD-PARTY NOTICES
+
+Acid303 Solo is produced by Burnout Theory. The publisher name does not replace or modify
+the copyright and licence of any third-party work.
+
+* JUCE framework 8.0.10: Raw Material Software Limited / respective rightsholders.
+  This product is prepared for distribution under the user's personal JUCE 9 Starter
+  commercial licence, subject to all conditions. See JUCE_9_STARTER_NOTICE.txt,
+  the official EULA, and the actual JUCE_UPSTREAM_LICENSE_8_0_10.md copied at build time.
+* Third-party code or resources included by JUCE: see the upstream JUCE licence,
+  any upstream SPDX SBOM copied at build time, and notices in the specific JUCE module source files.
+* VST3 SDK: third-party components may be used through the JUCE VST3 target. Their licensing
+  must be checked against the exact binaries/source built on Windows.
+* Inno Setup: installation builder credited to Jordan Russell and contributors.
+
+The source code for the synth DSP is separate from JUCE (Source/Engine.h), but the
+compiled VST3 links the JUCE framework.
+
+FINAL RELEASE GATES (must be checked by the human publisher):
+1. JUCE Starter eligibility and licensee status.
+2. Exact third-party dependencies and any copyright notices required by their terms.
+3. Rights to distribute presets, images, skins, icons, samples and fonts.
+4. Installer contains the original upstream licence and all required notices.
+5. No secret credentials or licences in the public source/release.
+
+References: https://juce.com/legal/juce-9-licence/ and https://github.com/juce-framework/JUCE/tree/8.0.10

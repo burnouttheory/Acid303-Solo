@@ -1,5 +1,1 @@
-<?xml version="1.0" encoding="UTF-8"?>
-
-<ACID303SKIN name="V0.26 DARK GRID" accent="FF7CFF9A" soft="FFC9FFD4" body="FF05080A"
-             deep="FF020304" panel="FF0A0F12" crackA="FF1C2D24" crackB="FF101813"
-             fxAccent="FFE63758" fxGlow="FF742033" dim="FF53725B"/>
+<ACID303SKIN name="V0.26 DARK GRID" accent="FF7CFF9A" soft="FFC9FFD4" body="FF05080A" deep="FF020304" panel="FF0A0F12" crackA="FF1C2D24" crackB="FF101813" fxAccent="FFE63758" fxGlow="FF742033" dim="FF53725B"/>

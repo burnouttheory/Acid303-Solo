@@ -1,20 +1,42 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "MidiPattern.h"
+#include "PatternBank.h"
+#include "PatternTranspose.h"
 #include <cmath>
 #include <limits>
+#include <random>
 
 Acid303SoloProcessor::Acid303SoloProcessor()
   : juce::AudioProcessor(BusesProperties().withOutput("Stereo Out",juce::AudioChannelSet::stereo(),true)),
     params(*this,nullptr,"ACID303_SOLO", makeParameters()) {
+    for (int bank = 0; bank < kPatternCount; ++bank) {
+        bankLengths[static_cast<size_t>(bank)].store(16, std::memory_order_relaxed);
+        for (int i=0; i<16; ++i) bankSteps[static_cast<size_t>(bank)][static_cast<size_t>(i)].store(
+            acid303::seq::pack({}), std::memory_order_relaxed);
+    }
     for (int i = 0; i < 16; ++i) {
         acid303::seq::Step step;
         step.on = (i == 0 || i == 3 || i == 4 || i == 7 || i == 8 || i == 11 || i == 12 || i == 15);
         step.note = static_cast<uint8_t>(48 + (i % 4 == 0 ? 0 : i % 4 == 3 ? -2 : 3));
         step.slide = i == 7 || i == 15;
         step.accent = i % 4 == 0;
-        steps[static_cast<size_t>(i)].store(acid303::seq::pack(step), std::memory_order_relaxed);
+        bankSteps[0][static_cast<size_t>(i)].store(acid303::seq::pack(step), std::memory_order_relaxed);
     }
+}
+
+Acid303SoloProcessor::~Acid303SoloProcessor() = default;
+
+void Acid303SoloProcessor::randomize16StepPattern(uint32_t seed) {
+    const auto pattern = acid303::seq::generateAcidPattern(seed);
+    for (int i = 0; i < 16; ++i)
+        bankSteps[static_cast<size_t>(getSelectedPattern())][static_cast<size_t>(i)].store(acid303::seq::pack(pattern[static_cast<size_t>(i)]),
+                                            std::memory_order_release);
+    setSequenceLength(16);
+    updateHostDisplay(juce::AudioProcessor::ChangeDetails{}.withNonParameterStateChanged(true));
+}
+void Acid303SoloProcessor::randomize16StepPattern() {
+    randomize16StepPattern(static_cast<uint32_t>(juce::Random::getSystemRandom().nextInt()));
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout Acid303SoloProcessor::makeParameters() {
@@ -77,6 +99,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout Acid303SoloProcessor::makePa
     p.add(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"uiSkin",1}, "Interface Skin",
         juce::StringArray{"Neon Green", "Ice Blue"}, 0));
+    // Append only: preserve original parameters, choices and automation ranges.
+    p.add(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{"bankTriggerMode",1}, "V3 MIDI Pattern Bank Trigger", false));
+    // Append only to keep every parameter from v2.0.6 and the V3 test unchanged.
+    // Index 12 is 0 semitones. The change is NON-DESTRUCTIVE to all 64 saved patterns.
+    juce::StringArray transposeOptions;
+    for (int semitones=-12; semitones<=12; ++semitones)
+        transposeOptions.add(juce::String(semitones > 0 ? "+" : "") + juce::String(semitones)
+                             + (semitones == 0 ? "  (original)" : " st"));
+    p.add(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"bankTranspose",1}, "Pattern Bank Transpose", transposeOptions, 12));
     return p;
 }
 void Acid303SoloProcessor::prepareToPlay(double sampleRate, int) {
@@ -87,18 +120,52 @@ void Acid303SoloProcessor::prepareToPlay(double sampleRate, int) {
     lastTransportRunning = false;
     heldSequenceNote = -1;
     midiGate.reset();
+    clearBankMidiNotes();
     haveLastPpqEnd = false;
     currentSequenceStep.store(-1, std::memory_order_relaxed);
 }
+acid303::seq::Step Acid303SoloProcessor::getStepForPattern(int pattern, int index) const {
+    if (pattern < 0 || pattern >= kPatternCount || index < 0 || index >= 16) return {};
+    return acid303::seq::unpack(bankSteps[static_cast<size_t>(pattern)][static_cast<size_t>(index)]
+                                     .load(std::memory_order_relaxed));
+}
 acid303::seq::Step Acid303SoloProcessor::getStep(int index) const {
-    if (index < 0 || index >= 16) return {};
-    return acid303::seq::unpack(steps[static_cast<size_t>(index)].load(std::memory_order_relaxed));
+    return getStepForPattern(getSelectedPattern(), index);
 }
 void Acid303SoloProcessor::setStep(int index, acid303::seq::Step step) {
     if (index < 0 || index >= 16) return;
-    steps[static_cast<size_t>(index)].store(acid303::seq::pack(step), std::memory_order_relaxed);
-    // Ask host to mark project as changed so FL Studio will save the edited grid.
+    const auto slot=static_cast<size_t>(getSelectedPattern());
+    bankSteps[slot][static_cast<size_t>(index)].store(acid303::seq::pack(step), std::memory_order_release);
     updateHostDisplay(juce::AudioProcessor::ChangeDetails{}.withNonParameterStateChanged(true));
+}
+int Acid303SoloProcessor::getSelectedPattern() const {
+    return juce::jlimit(0,kPatternCount-1,selectedEditPattern.load(std::memory_order_relaxed));
+}
+int Acid303SoloProcessor::getPatternGroup() const { return acid303::bank::group(getSelectedPattern()); }
+int Acid303SoloProcessor::getPatternNumber() const { return acid303::bank::pattern(getSelectedPattern()); }
+void Acid303SoloProcessor::selectPatternByKnobs(int group,int number) {
+    setSelectedPattern(acid303::bank::slot(juce::jlimit(0,7,group),juce::jlimit(0,7,number)));
+}
+void Acid303SoloProcessor::setSelectedPattern(int index) {
+    index=juce::jlimit(0,kPatternCount-1,index);
+    const int old=selectedEditPattern.exchange(index,std::memory_order_acq_rel);
+    if(old==index) return;
+    bankLengths[static_cast<size_t>(old)].store(getSequenceLength(),std::memory_order_relaxed);
+    setSequenceLength(bankLengths[static_cast<size_t>(index)].load(std::memory_order_relaxed));
+    updateHostDisplay(juce::AudioProcessor::ChangeDetails{}.withNonParameterStateChanged(true));
+}
+int Acid303SoloProcessor::getPatternTranspose() const {
+    if (const auto* trans=params.getRawParameterValue("bankTranspose"))
+        return juce::jlimit(-12,12,juce::roundToInt(trans->load(std::memory_order_relaxed))-12);
+    return 0;
+}
+bool Acid303SoloProcessor::getBankTriggerEnabled() const {
+    return params.getRawParameterValue("bankTriggerMode")->load(std::memory_order_relaxed)>=0.5f;
+}
+void Acid303SoloProcessor::setBankTriggerEnabled(bool on) {
+    if (auto* p=params.getParameter("bankTriggerMode")) {
+        p->beginChangeGesture(); p->setValueNotifyingHost(on ? 1.0f : 0.0f); p->endChangeGesture();
+    }
 }
 int Acid303SoloProcessor::getPlayMode() const {
     return params.getRawParameterValue("playMode")->load(std::memory_order_relaxed) >= 0.5f ? 1 : 0;
@@ -114,6 +181,7 @@ int Acid303SoloProcessor::getSequenceLength() const {
     return juce::jlimit(1,16,static_cast<int>(params.getRawParameterValue("seqLength")->load(std::memory_order_relaxed) + 0.5f));
 }
 void Acid303SoloProcessor::setSequenceLength(int length) {
+    bankLengths[static_cast<size_t>(getSelectedPattern())].store(juce::jlimit(1,16,length),std::memory_order_relaxed);
     if (auto* param = params.getParameter("seqLength")) {
         param->beginChangeGesture();
         param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(juce::jlimit(1,16,length))));
@@ -128,16 +196,21 @@ void Acid303SoloProcessor::releaseSequenceVoice() {
 void Acid303SoloProcessor::stopSequence() {
     releaseSequenceVoice();
     midiGate.reset();
+    clearBankMidiNotes();
     lastGlobalStep = std::numeric_limits<int64_t>::min();
 }
 void Acid303SoloProcessor::triggerSequenceStep(int index, const acid303::Controls& c) {
-    const auto next = getStep(index);
+    const int pattern = (getBankTriggerEnabled() && triggeredBankPattern >= 0)
+        ? triggeredBankPattern : getSelectedPattern();
+    const auto next = getStepForPattern(pattern,index);
     if (!next.on) {
         if (heldSequenceNote >= 0) engine.noteOff(heldSequenceNote, c);
         heldSequenceNote = -1;
         return;
     }
-    const int note = static_cast<int>(next.note);
+    // MIDI key 36..99 selects the bank, while the global transposition controls
+    // the sounding pitch. Never modify the stored sequence, accent or slide.
+    const int note = acid303::transpose::midiPitch(static_cast<int>(next.note), getPatternTranspose());
     const float velocity = acid303::seq::accentVelocity(next.accent);
     if (next.slide && heldSequenceNote >= 0) {
         // Trigger before releasing the old note, creating genuine legato glide.
@@ -152,6 +225,52 @@ void Acid303SoloProcessor::triggerSequenceStep(int index, const acid303::Control
     }
     heldSequenceNote = note;
 }
+
+void Acid303SoloProcessor::clearBankMidiNotes() {
+    bankHeldCounts.fill(0);
+    bankNoteOrder.fill(0);
+    bankNoteCounter=0;
+    triggeredBankPattern=-1;
+    currentPlaybackPattern.store(-1,std::memory_order_relaxed);
+}
+void Acid303SoloProcessor::selectPlayingBankPattern(int index, int seqSpeed, const acid303::Controls&) {
+    if (index==triggeredBankPattern) return;
+    releaseSequenceVoice();
+    midiGate.reset();
+    triggeredBankPattern=index;
+    currentPlaybackPattern.store(index,std::memory_order_relaxed);
+    if (index>=0) {
+        const int len=bankLengths[static_cast<size_t>(index)].load(std::memory_order_relaxed);
+        midiGate.setTiming(1 << seqSpeed, juce::jlimit(1,16,len));
+        midiGate.noteOn(0); // virtual gate; raw triggers tracked separately
+    }
+}
+void Acid303SoloProcessor::onBankNoteOn(int note, int seqSpeed, const acid303::Controls& c) {
+    if (acid303::bank::fromMidi(note)<0) return;
+    const int idx=acid303::bank::fromMidi(note);
+    auto& count=bankHeldCounts[static_cast<size_t>(idx)];
+    if (count<65535) ++count;
+    bankNoteOrder[static_cast<size_t>(idx)]=++bankNoteCounter;
+    if (triggeredBankPattern==idx) selectPlayingBankPattern(-1,seqSpeed,c);
+    selectPlayingBankPattern(idx,seqSpeed,c);
+}
+void Acid303SoloProcessor::onBankNoteOff(int note, int seqSpeed, const acid303::Controls& c) {
+    if (acid303::bank::fromMidi(note)<0) return;
+    const int idx=acid303::bank::fromMidi(note);
+    auto& count=bankHeldCounts[static_cast<size_t>(idx)];
+    if (!count) return;
+    --count;
+    if (count && idx==triggeredBankPattern) return;
+    if (idx != triggeredBankPattern) return;
+    int newest=-1; uint32_t time=0;
+    for (int i=0;i<kPatternCount;++i) {
+        if(bankHeldCounts[static_cast<size_t>(i)]>0 && bankNoteOrder[static_cast<size_t>(i)]>=time) {
+            newest=i; time=bankNoteOrder[static_cast<size_t>(i)];
+        }
+    }
+    selectPlayingBankPattern(newest,seqSpeed,c);
+}
+
 bool Acid303SoloProcessor::isBusesLayoutSupported(const BusesLayout& buses) const {
     return buses.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
 }
@@ -172,7 +291,7 @@ void Acid303SoloProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     c.compGain=value("compGain"); c.compWet=value("compWet");
     c.distOn=value("distOn") >= 0.5f; c.distWet=value("distWet");
     c.distDrive=value("distDrive"); c.distVolume=value("distVolume"); c.distEq=value("distEq");
-    c.distType=juce::jlimit(0,1,static_cast<int>(value("distType")+0.5f));
+    c.distType = juce::jlimit(0,1,static_cast<int>(value("distType")+0.5f));
     c.delayOn=value("delayOn") >= 0.5f; c.delayWet=value("delayWet");
     c.delayTime=value("delayTime"); c.delayFeedback=value("delayFeedback");
     c.delayMode=juce::jlimit(0,1,static_cast<int>(value("delayMode")+0.5f));
@@ -206,15 +325,19 @@ void Acid303SoloProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     hostTempoAvailable.store(foundBpm, std::memory_order_relaxed);
 
     const int mode = getPlayMode();
+    const bool bankMode = mode == 1 && getBankTriggerEnabled();
+    const int effectiveMode=mode+(bankMode?2:0);
+    // Preserve the user-edited pattern length as non-parameter bank state.
+    bankLengths[static_cast<size_t>(getSelectedPattern())].store(getSequenceLength(),std::memory_order_relaxed);
     const int seqSpeed = juce::jlimit(0, 3, static_cast<int>(value("seqRate") + 0.5f));
-    midiGate.setTiming(1 << seqSpeed, getSequenceLength());
-    if (mode != lastMode) {
+    if (!bankMode) midiGate.setTiming(1 << seqSpeed, getSequenceLength());
+    if (effectiveMode != lastMode) {
         // Switching modes resets both synth and sequencer note states, without
         // double-triggering any lingering MIDI events from the old mode.
         stopSequence();
         engine.allNotesOff();
         haveLastPpqEnd = false;
-        lastMode = mode;
+        lastMode = effectiveMode;
     }
 
     // FL Studio moves the playhead when the user seeks, stops or loops. Clear
@@ -245,8 +368,12 @@ void Acid303SoloProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
                 if (m.isNoteOn()) engine.noteOn(m.getNoteNumber(), m.getFloatVelocity(), c);
                 else if (m.isNoteOff()) engine.noteOff(m.getNoteNumber(), c);
                 else if (m.isAllNotesOff() || m.isAllSoundOff()) engine.allNotesOff();
+            } else if (hostPlaying && bankMode) {
+                if(m.isNoteOn()) onBankNoteOn(m.getNoteNumber(),seqSpeed,c);
+                else if(m.isNoteOff()) onBankNoteOff(m.getNoteNumber(),seqSpeed,c);
+                else if(m.isAllNotesOff() || m.isAllSoundOff()) stopSequence();
             } else if (hostPlaying) {
-                // In sequencer mode, MIDI only opens/closes the playback gate.
+                // In original sequencer mode, MIDI only opens/closes the playback gate.
                 // The note's pitch does not transpose or overwrite programmed steps.
                 if (m.isNoteOn()) midiGate.noteOn(m.getNoteNumber());
                 else if (m.isNoteOff()) {
@@ -274,36 +401,89 @@ void Acid303SoloProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     }
 }
 void Acid303SoloProcessor::getStateInformation(juce::MemoryBlock& dest) {
-    auto snapshot = params.copyState();
-    juce::ValueTree patternNode("SEQUENCER");
-    for (int i = 0; i < 16; ++i) {
-        const juce::Identifier key("s" + juce::String(i));
-        patternNode.setProperty(key,
-                                static_cast<int>(steps[static_cast<size_t>(i)].load(std::memory_order_relaxed)),
-                                nullptr);
+    auto snapshot=params.copyState();
+    // Legacy SEQUENCER remains for v2 preset readers (only slot 1A-1).
+    juce::ValueTree legacy("SEQUENCER");
+    for(int i=0;i<16;++i) {
+        legacy.setProperty(juce::Identifier("s"+juce::String(i)),
+            static_cast<int>(bankSteps[0][static_cast<size_t>(i)].load(std::memory_order_relaxed)),nullptr);
     }
-    snapshot.addChild(patternNode, -1, nullptr);
-    if (auto xml = snapshot.createXml()) copyXmlToBinary(*xml, dest);
+    snapshot.addChild(legacy,-1,nullptr);
+    juce::ValueTree bank("PATTERN_BANKS_V3");
+    bank.setProperty("selected",getSelectedPattern(),nullptr);
+    for(int pat=0;pat<kPatternCount;++pat) {
+        juce::ValueTree item("PATTERN");
+        item.setProperty("index",pat,nullptr);
+        item.setProperty("length",bankLengths[static_cast<size_t>(pat)].load(std::memory_order_relaxed),nullptr);
+        for(int i=0;i<16;++i) {
+            item.setProperty(juce::Identifier("s"+juce::String(i)),
+                static_cast<int>(bankSteps[static_cast<size_t>(pat)][static_cast<size_t>(i)]
+                    .load(std::memory_order_relaxed)),nullptr);
+        }
+        bank.addChild(item,-1,nullptr);
+    }
+    snapshot.addChild(bank,-1,nullptr);
+    if(auto xml=snapshot.createXml()) copyXmlToBinary(*xml,dest);
 }
 void Acid303SoloProcessor::setStateInformation(const void* data,int bytes) {
     if (auto xml=getXmlFromBinary(data,bytes)) {
         auto restored=juce::ValueTree::fromXml(*xml);
-        if (restored.isValid() && restored.hasType("ACID303_SOLO")) {
-            auto node = restored.getChildWithName("SEQUENCER");
-            if (node.isValid()) {
-                for (int i = 0; i < 16; ++i) {
-                    const juce::Identifier key("s" + juce::String(i));
-                    if (node.hasProperty(key))
-                        steps[static_cast<size_t>(i)].store(static_cast<uint32_t>(
-                            static_cast<int>(node.getProperty(key))), std::memory_order_relaxed);
+        if (!restored.isValid() || !restored.hasType("ACID303_SOLO")) return;
+        // Import of legacy v2: initialise all 64 slots to empty and load v2 pattern into 1A-1.
+        for(int pat=0;pat<kPatternCount;++pat) {
+            bankLengths[static_cast<size_t>(pat)].store(16,std::memory_order_relaxed);
+            for(int i=0;i<16;++i) bankSteps[static_cast<size_t>(pat)][static_cast<size_t>(i)]
+                .store(acid303::seq::pack({}),std::memory_order_relaxed);
+        }
+        auto bank=restored.getChildWithName("PATTERN_BANKS_V3");
+        if (bank.isValid()) {
+            for(int i=0;i<bank.getNumChildren();++i) {
+                auto item=bank.getChild(i);
+                if (!item.hasType("PATTERN")) continue;
+                const int pat=static_cast<int>(item.getProperty("index",-1));
+                if(pat<0 || pat>=kPatternCount) continue;
+                bankLengths[static_cast<size_t>(pat)].store(juce::jlimit(1,16,
+                    static_cast<int>(item.getProperty("length",16))),std::memory_order_relaxed);
+                for(int step=0;step<16;++step) {
+                    const juce::Identifier key("s"+juce::String(step));
+                    if(item.hasProperty(key)) bankSteps[static_cast<size_t>(pat)][static_cast<size_t>(step)]
+                        .store(static_cast<uint32_t>(static_cast<int>(item.getProperty(key))),std::memory_order_relaxed);
                 }
             }
-            // SEQUENCER is non-parameter state. Remove it before passing the
-            // restored APVTS state to JUCE: otherwise subsequent saves may
-            // duplicate the child and reload stale notes from the first copy.
-            if (node.isValid()) restored.removeChild(node, nullptr);
-            params.replaceState(restored);
+            selectedEditPattern.store(juce::jlimit(0,63,static_cast<int>(bank.getProperty("selected",0))),std::memory_order_relaxed);
+        } else {
+            auto legacy=restored.getChildWithName("SEQUENCER");
+            if (legacy.isValid()) for(int i=0;i<16;++i) {
+                const juce::Identifier key("s"+juce::String(i));
+                if(legacy.hasProperty(key)) bankSteps[0][static_cast<size_t>(i)]
+                    .store(static_cast<uint32_t>(static_cast<int>(legacy.getProperty(key))),std::memory_order_relaxed);
+            }
+            selectedEditPattern.store(0,std::memory_order_relaxed);
         }
+        for(auto type : {"SEQUENCER","PATTERN_BANKS_V3","MIDI_LEARN"}) {
+            auto node=restored.getChildWithName(type);
+            if(node.isValid()) restored.removeChild(node,nullptr);
+        }
+        // Old v2 preset lacks new V3 parameter. Merge with current defaults so
+        // the added bankTriggerMode is OFF by default and all v2 parameters remain.
+        if (!bank.isValid()) {
+            // Old v2 files must always open using original MIDI behaviour.
+            if (auto* flag=params.getParameter("bankTriggerMode")) flag->setValueNotifyingHost(0.0f);
+        }
+        bool hasTransposition = false;
+        for (int i=0; i<restored.getNumChildren(); ++i)
+            if (restored.getChild(i).getProperty("id").toString() == "bankTranspose")
+                hasTransposition = true;
+        params.replaceState(restored);
+        if (!hasTransposition)
+            if (auto* p=params.getParameter("bankTranspose"))
+                p->setValueNotifyingHost(p->convertTo0to1(12.0f));
+        if (!bank.isValid())
+            if (auto* p=params.getParameter("bankTriggerMode"))
+                p->setValueNotifyingHost(0.0f);
+        // Align the displayed sequence length to the restored selected bank.
+        if(bank.isValid()) setSequenceLength(bankLengths[static_cast<size_t>(getSelectedPattern())].load());
+        else bankLengths[0].store(getSequenceLength(), std::memory_order_relaxed);
     }
 }
 
@@ -353,6 +533,18 @@ juce::Result Acid303SoloProcessor::preparePresetFolder() {
                 // old location, the user can still import manually with LOAD.
                 oldFile.copyFileTo(target);
             }
+        }
+    }
+    // Non-destructive migration of user-authored presets from the standalone V3 TEST.
+    // Preserve all v2.0.6 presets in place; keep originals in Acid303V3 as backups.
+    const auto v3Presets=juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+        .getChildFile("Acid303V3").getChildFile("presets");
+    const auto imported=destination.getChildFile("V3_Imported");
+    if (v3Presets.isDirectory()) {
+        for (const auto& file : v3Presets.findChildFiles(juce::File::findFiles, true, "*.acid303preset")) {
+            auto target=imported.getChildFile(file.getRelativePathFrom(v3Presets));
+            if (!target.existsAsFile() && target.getParentDirectory().createDirectory().wasOk())
+                file.copyFileTo(target);
         }
     }
     return juce::Result::ok();
@@ -427,19 +619,73 @@ void Acid303SoloProcessor::installFactoryContentForCurrentUser() {
         { "presets", getUserPresetFolder() },
         { "midi",    getUserMidiFolder() }
     }};
+    // Bring across separately created V3 TEST skins/MIDI without overwriting v2.
+    const auto oldV3=juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+        .getChildFile("Acid303V3");
+    for (const auto& kind : {"skins", "midi"}) {
+        const auto source=oldV3.getChildFile(kind);
+        const auto targetBase=juce::String(kind)=="skins" ? getUserSkinFolder() : getUserMidiFolder();
+        if (source.isDirectory() && targetBase.createDirectory().wasOk())
+            for (const auto& file : source.findChildFiles(juce::File::findFiles, false, "*")) {
+                const auto ext=file.getFileExtension().toLowerCase();
+                const bool allowed = (juce::String(kind)=="skins") ? ext==".acid303skin"
+                    : ext==".mid" || ext==".midi";
+                const auto target=targetBase.getChildFile(file.getFileName());
+                if (allowed && !target.existsAsFile()) file.copyFileTo(target);
+            }
+    }
     for (const auto& category : categories) {
         const auto source = shared.getChildFile(category.first);
         const auto& destination = category.second;
         if (!source.isDirectory()) continue;
         if (destination.createDirectory().failed()) continue;
-        for (const auto& file : source.findChildFiles(juce::File::findFiles, false, "*")) {
+        // V3 Factory presets are organised in Factory/<style>/*.acid303preset.
+        // Recursively copy the category so installed factory presets are visible
+        // to the real Windows user, retaining the music-style subdirectories.
+        // Never overwrite a user's existing presets, skins, or MIDI files.
+        const bool recursive = (category.first == "presets");
+        for (const auto& file : source.findChildFiles(juce::File::findFiles, recursive, "*")) {
             const auto extension = file.getFileExtension().toLowerCase();
             const bool allowed = (category.first == "skins" && extension == ".acid303skin")
                               || (category.first == "presets" && extension == ".acid303preset")
                               || (category.first == "midi" && (extension == ".mid" || extension == ".midi"));
             if (!allowed) continue;
-            const auto target = destination.getChildFile(file.getFileName());
-            if (!target.exists()) file.copyFileTo(target); // preserve ALL pre-existing content
+            const auto relative = file.getRelativePathFrom(source);
+            const auto normalized = relative.replaceCharacter('\\', '/');
+            if (category.first == "presets" && normalized.startsWith("FactoryV3/")) {
+                // Upgrade only the 154 known *factory* paths. This avoids the
+                // old V2 Factory taking precedence over FactoryV3 in the preset
+                // browser. Never touch presets/User or standalone user files.
+                const auto suffix = normalized.fromFirstOccurrenceOf("FactoryV3/", false, false);
+                const auto target = destination.getChildFile("Factory").getChildFile(suffix);
+                if (target.existsAsFile()) {
+                    bool alreadyV3 = false;
+                    juce::MemoryBlock current;
+                    if (target.loadFileAsData(current) && !current.isEmpty()) {
+                        if (auto xml = getXmlFromBinary(current.getData(), static_cast<int>(current.getSize()))) {
+                            if (auto* banks = xml->getChildByName("PATTERN_BANKS_V3")) {
+                                // Respect already edited V3 presets. This is
+                                // particularly important for repeat installs.
+                                alreadyV3 = banks->getNumChildElements() >= kPatternCount;
+                            }
+                        }
+                    }
+                    if (alreadyV3) continue;
+                    const auto backup = destination.getChildFile("Factory_PreV3_Backup")
+                        .getChildFile(suffix);
+                    if (backup.getParentDirectory().createDirectory().failed()) continue;
+                    if (!backup.existsAsFile() && !target.copyFileTo(backup)) continue;
+                    juce::TemporaryFile tmp(target);
+                    if (file.copyFileTo(tmp.getFile()))
+                        (void) tmp.overwriteTargetFileWithTemporary();
+                } else if (target.getParentDirectory().createDirectory().wasOk()) {
+                    (void) file.copyFileTo(target);
+                }
+                continue;
+            }
+            const auto target = destination.getChildFile(relative);
+            if (!target.exists() && target.getParentDirectory().createDirectory().wasOk())
+                file.copyFileTo(target);
         }
     }
 #endif
@@ -456,7 +702,11 @@ juce::Result Acid303SoloProcessor::exportMidiToFile(const juce::File& requested)
     acid303::midi::Pattern pattern;
     pattern.length = getSequenceLength();
     pattern.rate = juce::jlimit(0, 3, static_cast<int>(params.getRawParameterValue("seqRate")->load() + 0.5f));
-    for (int i = 0; i < 16; ++i) pattern.steps[static_cast<size_t>(i)] = getStep(i);
+    for (int i = 0; i < 16; ++i) {
+        auto step=getStep(i);
+        if (step.on) step.note=static_cast<uint8_t>(acid303::transpose::midiPitch(static_cast<int>(step.note),getPatternTranspose()));
+        pattern.steps[static_cast<size_t>(i)]=step;
+    }
     const auto bytes = acid303::midi::encode(pattern);
     if (auto result = file.getParentDirectory().createDirectory(); result.failed())
         return result;
@@ -483,9 +733,11 @@ juce::Result Acid303SoloProcessor::importMidiFromFile(const juce::File& file) {
     if (!result.ok) return juce::Result::fail(juce::String(result.error));
     // Update all sixteen pads, including disabled/unused ones when native
     // metadata is present. Audio thread reads these values atomically.
+    const auto targetPattern = static_cast<size_t>(getSelectedPattern());
     for (int i = 0; i < 16; ++i)
-        steps[static_cast<size_t>(i)].store(acid303::seq::pack(result.pattern.steps[static_cast<size_t>(i)]),
-                                           std::memory_order_relaxed);
+        bankSteps[targetPattern][static_cast<size_t>(i)].store(
+            acid303::seq::pack(result.pattern.steps[static_cast<size_t>(i)]),
+            std::memory_order_release);
     const auto setHostParameter = [this](const char* id, int v) {
         if (auto* p = params.getParameter(id)) {
             p->beginChangeGesture();

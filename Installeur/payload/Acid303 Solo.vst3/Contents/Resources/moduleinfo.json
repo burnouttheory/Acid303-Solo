@@ -1,8 +1,8 @@
 {
   "Name": "Acid303 Solo",
-  "Version": "0.30.3",
+  "Version": "3.0.0",
   "Factory Info": {
-    "Vendor": "Acid303 Independent",
+    "Vendor": "Burnout Theory",
     "URL": "",
     "E-Mail": "",
     "Flags": {
@@ -16,8 +16,8 @@
       "CID": "ABCDEF019182FAEB4163303341333033",
       "Category": "Audio Module Class",
       "Name": "Acid303 Solo",
-      "Vendor": "Acid303 Independent",
-      "Version": "0.30.3",
+      "Vendor": "Burnout Theory",
+      "Version": "3.0.0",
       "SDKVersion": "VST 3.7.12",
       "Sub Categories": [
         "Instrument",
@@ -32,8 +32,8 @@
       "CID": "ABCDEF011234ABCD4163303341333033",
       "Category": "Component Controller Class",
       "Name": "Acid303 Solo",
-      "Vendor": "Acid303 Independent",
-      "Version": "0.30.3",
+      "Vendor": "Burnout Theory",
+      "Version": "3.0.0",
       "SDKVersion": "VST 3.7.12",
       "Sub Categories": [
         "Instrument",

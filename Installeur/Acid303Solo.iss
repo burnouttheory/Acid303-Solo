@@ -1,18 +1,20 @@
 #define MyAppName "Acid303 Solo"
-#define MyAppVersion "0.30.3"
+#define MyAppVersion "3.0.0"
 
 [Setup]
 AppId=Acid303SoloVST3
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} v{#MyAppVersion}
-AppPublisher=Acid303 Independent
+AppPublisher=Burnout Theory
+AppPublisherURL=https://github.com/burnouttheory
+AppSupportURL=https://github.com/burnouttheory
 DefaultDirName={commoncf64}\VST3
 UsePreviousAppDir=yes
 DisableDirPage=no
 DisableProgramGroupPage=yes
 OutputDir=Output
-OutputBaseFilename=Acid303Solo_Setup_{#MyAppVersion}
+OutputBaseFilename=Acid303Solo_Setup_{#MyAppVersion}_OFFICIEL
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
@@ -23,8 +25,21 @@ CloseApplications=yes
 RestartApplications=no
 WizardStyle=modern
 
+; IMPORTANT: activer uniquement avec CERTIFICAT DE SIGNATURE RECONNU.
+; Le compilateur Inno signe alors Setup, Uninstall et les copies temporaires.
+; Cette definition est passee par CREER_INSTALLATEUR_SIGNE.bat.
+#ifdef Acid303Signed
+SignTool=acid303
+SignedUninstaller=yes
+#endif
+
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[CustomMessages]
+french.CloseAudioApps=Avant de poursuivre, sauvegardez vos projets et fermez FL Studio ainsi que tout autre logiciel utilisant Acid303 Solo. Vos dossiers personnels (presets, skins et MIDI) seront préservés.
+english.CloseAudioApps=Before proceeding, save your projects and close FL Studio and any other audio application using Acid303 Solo. Your personal presets, skins and MIDI files will be preserved.
 
 [Files]
 ; JUCE Windows VST3 est un dossier (bundle) : il faut conserver Contents\x86_64-win\...
@@ -35,9 +50,13 @@ Source: "payload\Acid303 Solo.vst3\*"; DestDir: "{app}\Acid303 Solo.vst3"; Flags
 Source: "..\FactoryContent\skins\*"; DestDir: "{commonappdata}\Acid303Solo\FactoryContent\skins"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\FactoryContent\presets\*"; DestDir: "{commonappdata}\Acid303Solo\FactoryContent\presets"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\FactoryContent\midi\*"; DestDir: "{commonappdata}\Acid303Solo\FactoryContent\midi"; Flags: recursesubdirs createallsubdirs ignoreversion
+; PDF user manuals (French/English) installed alongside the factory resources.
+Source: "..\Manuals\*.pdf"; DestDir: "{commonappdata}\Acid303Solo\Manuals"; Flags: ignoreversion
+; Legal notices shipped WITH the installed plugin (not only in source archive).
+Source: "..\LICENSES\*"; DestDir: "{commonappdata}\Acid303Solo\Licenses"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Code]
 function InitializeSetup(): Boolean;
 begin
-  Result := (MsgBox('Avant de poursuivre, sauvegardez vos projets et fermez FL Studio ainsi que tout autre logiciel audio utilisant Acid303 Solo. L''installateur ne modifie pas vos dossiers personnels Documents\Acid303\midi, presets et skins.', mbConfirmation, MB_OKCANCEL) = IDOK);
+  Result := (MsgBox(ExpandConstant('{cm:CloseAudioApps}'), mbConfirmation, MB_OKCANCEL) = IDOK);
 end;

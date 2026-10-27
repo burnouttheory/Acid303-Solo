@@ -39,7 +39,7 @@ struct Controls {
     float distDrive = 0.58f;
     float distVolume = 0.85f;
     float distEq = 0.5f;       // dark <0.5 / bright >0.5
-    int distType = 0;           // 0 Tube, 1 Bitcrusher
+    int distType = 0;           // Original preset mapping: 0 = Tube (new pedal-inspired sound), 1 = Bitcrusher
     bool delayOn = false;       // OFF = no delay, no tail
     float delayWet = 0.30f;
     float delayTime = 0.375f;  // synced subdivision, 0..1
@@ -52,6 +52,26 @@ struct Controls {
     float reverbVolume = 0.45f;
     float bpm = 120.0f;        // ALWAYS supplied by DAW when host reports tempo
 };
+// V2.0.5 - Cutoff spans the audible range logarithmically.  The old DSP
+// added a fixed several-kHz envelope offset, making a nearly closed knob
+// sound open.  This proportional octave sweep preserves acid accents while
+// allowing a genuinely dark minimum position and fully open maximum.
+// Kept pure and JUCE-independent for reproducible DSP regression tests.
+inline float cutoffFrequencyHz(const Controls& c, float filterEnv,
+                               float noteVelocity, float lfo, float sampleRate) {
+    const float position = clampf(c.cutoff, 0.0f, 1.0f);
+    const float baseHz = 45.0f * std::pow(16000.0f / 45.0f,
+                                         std::pow(position, 0.68f));
+    const float sweepOctaves = clampf(filterEnv, 0.0f, 1.7f)
+        * clampf(c.envMod, 0.0f, 1.0f)
+        * (1.60f + 0.65f * clampf(noteVelocity, 0.0f, 1.0f)
+                     * clampf(c.accent, 0.0f, 1.0f))
+        * (0.35f + 0.65f * position);
+    const float lfoOctaves = lfo * clampf(c.mod, 0.0f, 1.0f) * 2.4f;
+    return clampf(baseHz * std::exp2(sweepOctaves + lfoOctaves),
+                  30.0f, sampleRate * 0.42f);
+}
+
 struct Stereo { float l = 0.0f, r = 0.0f; };
 
 struct DelayLine {
@@ -118,8 +138,9 @@ public:
         phase = 0.0f; lfoPhase = 0.0f;
         frequency = targetFrequency = hzFromMidi(48.0f);
         envelope = filterEnvelope = velocity = 0.0f;
-        filter1 = filter2 = 0.0f; toneLP_L = toneLP_R = 0.0f;
+        filter1 = filter2 = 0.0f; smoothedCutoffHz = 0.0f; toneLP_L = toneLP_R = 0.0f;
         crusherSample = 0.0f; crusherCount = 0; lastDistType = -1;
+        acidInputPrev = acidLow = acidPostLp1 = acidPostLp2 = acidDcIn = acidDcOut = 0.0f;
         compLowLP = compHighLP = 0.0f;
         compEnvelope.fill(0.0f);
         currentNote = -1; gate = false; releasing = false;
@@ -174,6 +195,47 @@ public:
                           1, static_cast<int>(delayL.data.size()) - 1);
     }
 
+    // ACID DRIVE: not a Roland/BOSS/Ibanez schematic replica. Inspired by the
+    // frequency-selective drive topology common to classic guitar pedals.
+    // Pre-emphasis leaves some fundamental intact while driving upper mids;
+    // asymmetric diode-like waveshaping adds odd/even harmonics; a high-drive
+    // second clipping stage gives a more urgent acid-techno character.
+    // Oversampled nonlinear section (4x, linear input interpolation) with
+    // 2-pole output lowpass; intentionally avoids allocations on audio thread.
+    // DC blocker counters asymmetrical offset. Parameter changes are safe.
+    float processAcidDrive(float in, float drive) {
+        constexpr int factor = 4;
+        const float osrate = sr * factor;
+        const float hpA = 1.0f - std::exp(-2.0f*pi*620.0f/osrate);
+        const float postA = 1.0f - std::exp(-2.0f*pi*8500.0f/osrate);
+        const float gain = 1.0f + 116.0f*drive*drive;
+        const float stack = 0.78f*drive*drive;
+        float value = 0.0f;
+        for (int k = 0; k < factor; ++k) {
+            const float sub = acidInputPrev + (in-acidInputPrev)*((k+1)*0.25f);
+            acidLow += hpA*(sub-acidLow);
+            // Retain ~42% lows, distort upper mids more strongly.
+            const float focussed = 0.42f*sub + 0.84f*(sub-acidLow);
+            const float x = focussed * gain;
+            // Unlike Tube, this is not simply a tanh curve: distinct unequal
+            // positive/negative diode characteristics plus a stackable harder knee.
+            const float diode = x>=0.0f ? 0.68f*std::tanh(x/0.68f)
+                                          : 0.88f*std::tanh(x/0.88f);
+            const float harder = std::clamp(diode * (1.0f+2.1f*drive),-0.76f,0.61f);
+            const float clipped = diode*(1.0f-stack)+harder*stack;
+            // Suppress most out-of-band alias energy before downsampling.
+            acidPostLp1 += postA*(clipped-acidPostLp1);
+            acidPostLp2 += postA*(acidPostLp1-acidPostLp2);
+            value += acidPostLp2*0.25f;
+        }
+        acidInputPrev = in;
+        const float dcR = std::exp(-2.0f*pi*18.0f/sr);
+        const float out = value-acidDcIn + dcR*acidDcOut;
+        acidDcIn = value;
+        acidDcOut = out;
+        return clampf(out, -1.0f, 1.0f);
+    }
+
     Stereo render(const Controls& c) {
         float source = 0.0f;
         const float rate = 1.0f / sr;
@@ -202,14 +264,14 @@ public:
             source = saw * (1.0f - c.wave) + pulse * c.wave;
 
             const float lfo = std::sin(2.0f*pi*lfoPhase);
-            // Acid-style envelope sweep: pronounced, velocity-sensitive filter movement.
-            // Per-note accents drive both the filter envelope and resonance response.
-            const float envBoost = filterEnvelope * c.envMod *
-                                   (2800.0f + 5200.0f * velocity * c.accent);
-            float cutoff = 55.0f + c.cutoff * c.cutoff * 5200.0f + envBoost;
-            cutoff *= std::pow(2.0f, lfo * c.mod * 2.4f);
-            cutoff = clampf(cutoff, 35.0f, sr*0.42f);
-            const float g = std::tan(pi * cutoff / sr);
+            // V2.0.5: much wider, perceptually distributed cutoff movement.
+            // 4 ms frequency smoothing prevents clicks during FL Studio automation.
+            const float desiredCutoffHz = cutoffFrequencyHz(
+                c, filterEnvelope, velocity, lfo, sr);
+            if (smoothedCutoffHz <= 0.0f) smoothedCutoffHz = desiredCutoffHz;
+            const float cutoffSmoothing = 1.0f - std::exp(-rate / 0.004f);
+            smoothedCutoffHz += (desiredCutoffHz - smoothedCutoffHz) * cutoffSmoothing;
+            const float g = std::tan(pi * smoothedCutoffHz / sr);
             const float q = 0.72f + c.reso * 11.5f;
             const float k = 1.0f / q;
             const float a1 = 1.0f / (1.0f + g*(g+k));
@@ -264,9 +326,10 @@ public:
             compEnvelope.fill(0.0f);
         }
 
-        // Two distortion types, both controlled by DRIVE,
-        // LEVEL, EQ and DRY/WET. Mode selection is a real automatable VST3
-        // parameter. Keep this DSP allocation-free on the audio thread.
+        // Two unchanged preset identities: 0=TUBE, 1=BITCRUSHER.
+        // TUBE now uses an acid-oriented, external-pedal-inspired asymmetrical
+        // overdrive. Older Tube presets load unchanged but WILL sound different.
+        // The vintage TB-303 has no integrated distortion.
         float l = source, r = source;
         if (c.distOn) {
             const int type = std::clamp(c.distType, 0, 1);
@@ -276,14 +339,15 @@ public:
             if (type != lastDistType) {
                 crusherCount = 0;
                 crusherSample = 0.0f;
+                if (type == 0) {
+                    acidInputPrev = acidLow = acidPostLp1 = acidPostLp2 = acidDcIn = acidDcOut = 0.0f;
+                }
                 lastDistType = type;
             }
             float driven = 0.0f;
             switch (type) {
-                case 0: { // Tube: asymmetrical valve saturation with a warm second stage
-                    const float bias = 0.12f + 0.26f * drive;
-                    const float positive = std::tanh(x + bias) - std::tanh(bias);
-                    driven = 0.65f * positive + 0.35f * std::tanh(positive * 2.2f);
+                case 0: { // TUBE name retained; replacement: 303-focused diode overdrive
+                    driven = processAcidDrive(source, drive);
                     break;
                 }
                 case 1: { // Bitcrusher: drive adjusts quantisation and sample rate reduction
@@ -302,7 +366,7 @@ public:
                 }
             }
 
-            // Distortion EQ applies to both algorithms.
+            // Distortion EQ applies to both modes.
             const float eqCut = 350.0f + c.distEq * 14000.0f;
             const float eqA = 1.0f - std::exp(-2.0f * pi * eqCut * rate);
             toneLP_L += eqA * (driven - toneLP_L);
@@ -319,6 +383,7 @@ public:
             r = l;
         } else {
             toneLP_L = source; toneLP_R = source;
+            lastDistType = -1; // restart nonlinear mode safely on next enable
         }
 
         // DAW-synchronised dual mode stereo delay. Original DRY/WET behaviour is
@@ -409,7 +474,11 @@ private:
     float frequency = 130.81278f, targetFrequency = 130.81278f;
     float envelope = 0.0f, filterEnvelope = 0.0f, velocity = 0.0f;
     float filter1 = 0.0f, filter2 = 0.0f;
+    float smoothedCutoffHz = 0.0f;
     float toneLP_L = 0.0f, toneLP_R = 0.0f;
+    float acidInputPrev = 0.0f, acidLow = 0.0f;
+    float acidPostLp1 = 0.0f, acidPostLp2 = 0.0f;
+    float acidDcIn = 0.0f, acidDcOut = 0.0f;
     float compLowLP = 0.0f, compHighLP = 0.0f;
     std::array<float,3> compEnvelope{};
     float crusherSample = 0.0f;

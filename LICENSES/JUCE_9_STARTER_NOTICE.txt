@@ -1,0 +1,23 @@
+ACID303 SOLO V3.0.0 TEST — JUCE COMMERCIAL-LICENCE NOTICE
+
+Publisher: Burnout Theory (personal publishing name of the developer).
+The plug-in includes JUCE framework version 8.0.10, copyright retained by its original rightsholders.
+The developer reported an ACTIVE JUCE 9 Starter licence in their personal JUCE account on 26 October 2026.
+Official JUCE guidance confirms that a JUCE 9 licence covers earlier framework versions, including JUCE 8.
+
+The selected licensing path is JUCE Starter under the commercial JUCE End User Licence Agreement,
+not AGPLv3 for this product release. The licence permits distribution of products if the licence
+holder complies with all applicable conditions. In particular, the Starter revenue / funding
+limit for an individual is 20,000 USD generated from their use of JUCE over the preceding 12 months;
+this includes donations, sponsorships, advertising and indirect funding linked to use of JUCE.
+Eligibility has NOT been independently verified; the licence holder must confirm it before distribution.
+
+Official terms (JUCE 9, 17 June 2026): https://juce.com/legal/juce-9-licence/
+JUCE FAQ / older-version compatibility: https://juce.com/get-juce/
+JUCE 8 original sources: https://github.com/juce-framework/JUCE/tree/8.0.10
+
+The build script copies the original JUCE 8.0.10 LICENSE.md directly from the cloned JUCE
+source into JUCE_UPSTREAM_LICENSE_8_0_10.md and, when present, also copies JUCE.spdx.json.
+Neither the active licence screenshot nor personal account credentials are included in the release.
+
+This notice does not grant independent rights to JUCE or replace the JUCE EULA.

@@ -1,5 +1,5 @@
 {
-  "version": "2.0.6",
-  "download_url": "https://github.com/burnouttheory/Acid303-Solo/releases/tag/v2.0.6",
-  "notes": "Burnout Theory - Acid303 Solo v2.0.6: extended cutoff, new Tube acid overdrive, Bitcrusher unchanged; 154 presets, 11 skins, 173 MIDI patterns."
+  "version": "3.0.0",
+  "download_url": "https://github.com/burnouttheory/Acid303-Solo/releases/tag/v3.0.0",
+  "notes": "Acid303 Solo V3.0.0 : 64 patterns par preset, 154 presets enrichis, controle MIDI 36-99 depuis FL Studio, carte MIDI, transposition globale +/-12 demi-tons, TB303 GREY vert neon, manuels FR/EN. Sauvegardez vos presets apres toute modification."
 }

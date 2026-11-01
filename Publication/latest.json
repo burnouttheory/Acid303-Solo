@@ -1,5 +1,6 @@
+
 {
-  "version": "3.0.0",
-  "download_url": "https://github.com/burnouttheory/Acid303-Solo/releases/tag/v3.0.0",
-  "notes": "Acid303 Solo V3.0.0 : 64 patterns par preset, 154 presets enrichis, controle MIDI 36-99 depuis FL Studio, carte MIDI, transposition globale +/-12 demi-tons, TB303 GREY vert neon, manuels FR/EN. Sauvegardez vos presets apres toute modification."
+  "version": "3.2.0",
+  "download_url": "https://github.com/burnouttheory/Acid303-Solo/releases/download/v3.2.0/Acid303Solo_Setup_3.2.0_OFFICIEL.exe",
+  "notes": "Acid303 Solo v3.2.0 - Wavetable Morphing, 8-Voice Unison, FL Studio Automation and 154 Factory Presets."
 }
